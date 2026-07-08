@@ -5,8 +5,10 @@ import com.pontalti.game2048.domain.Direction;
 import com.pontalti.game2048.domain.Position;
 import com.pontalti.game2048.domain.port.MoveAdvisor;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.*;
 
 /**
  * Offline move advisor (requirement 6), based on the <b>expectimax</b> algorithm.
@@ -117,20 +119,50 @@ public final class ExpectimaxAdvisor implements MoveAdvisor {
      */
     @Override
     public Optional<Direction> suggest(Board board) {
-        Direction best = null;
-        double bestScore = Double.NEGATIVE_INFINITY;
-        for(Direction dir : Direction.values()){
+        // Build one scoring task per legal direction (illegal moves are skipped).
+        List<Direction> legal = new ArrayList<>();
+        List<Callable<Double>> tasks = new ArrayList<>();
+        for (Direction dir : Direction.values()) {
             Board moved = board.move(dir);
-            if(moved.sameGridAs(board)){
-                continue; //illegal move: changes nothing, ignore it
+            if (moved.sameGridAs(board)) {
+                continue; // illegal move: changes nothing, ignore it
             }
-            double score = expectedValuesAfterMove(moved, maxDepth);
-            if(score > bestScore){
-                bestScore = score;
-                best = dir;
-            }
+            legal.add(dir);
+            tasks.add(() -> expectedValuesAfterMove(moved, maxDepth));
         }
-        return Optional.ofNullable(best);
+
+        if (legal.isEmpty()) {
+            return Optional.empty(); // dead end
+        }
+
+        return getDirection(tasks, legal);
+    }
+
+    private Optional<Direction> getDirection(List<Callable<Double>> tasks, List<Direction> legal) {
+        // One virtual thread per task; try-with-resources closes the executor.
+        List<Future<Double>> futures;
+        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            futures = new ArrayList<>(tasks.size());
+            for (Callable<Double> task : tasks) {
+                futures.add(pool.submit(task));
+            }
+
+            Direction best = null;
+            double bestScore = Double.NEGATIVE_INFINITY;
+            for (int i = 0; i < futures.size(); i++) {
+                double score = futures.get(i).get(); // waits for this task
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = legal.get(i);
+                }
+            }
+            return Optional.ofNullable(best);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Move search was interrupted", e);
+        } catch (ExecutionException e) {
+            throw new IllegalStateException("Move search failed", e.getCause());
+        }
     }
 
     /**
