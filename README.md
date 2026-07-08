@@ -1,269 +1,180 @@
-# 2048
+# 2048 REST Service
 
-A Java implementation of the classic [2048](https://play2048.co) sliding-tile
-puzzle, with three interchangeable user interfaces (Swing, JavaFX, and a text
-console) and an offline AI advisor that suggests the best move.
+A Spring Boot REST API that exposes a 2048 game engine over HTTP. The project
+demonstrates **hexagonal architecture (Ports & Adapters)**: the entire REST layer
+was added without changing a single line of the game domain. The same `Board`,
+`Game`, `Direction`, and `ExpectimaxAdvisor` that previously drove console, Swing,
+and JavaFX interfaces now sit behind HTTP, unchanged.
 
-The project is built around a **hexagonal (Ports & Adapters)** architecture: the
-game rules live in a self-contained domain that knows nothing about the UI or the
-AI, and each interface is just an adapter plugged into the same core.
+## Highlights
 
----
+- **Domain untouched.** The game rules (`domain/`) and the AI
+  (`adapter/ai/ExpectimaxAdvisor`) are byte-for-byte the same as the desktop
+  version, with their original unit tests still passing.
+- **REST is purely additive.** A new inbound HTTP adapter plus one new port
+  (`GameRepository`) is all it took.
+- **Full API with Swagger / OpenAPI 3.1.**
+- **End-to-end tests** that drive win, loss, and hint entirely over HTTP.
 
-## Requirements coverage
+## Tech stack
 
-| # | Requirement | Where |
-|---|-------------|-------|
-| 1 | Generate an initial board | `Game` constructor + `Board.spawnRandom` |
-| 2 | Move Left | `Board.move(Direction.LEFT)` |
-| 3 | Move Right | `Board.move(Direction.RIGHT)` |
-| 4 | Move Up / Down | `Board.move(Direction.UP / DOWN)` |
-| 5 | Spawn a 2/4 after a valid move | `Game.play` -> `Board.spawnRandom` |
-| 6 | Win / Lose detection | `Board.hasWon` / `Board.isGameOver` |
-| 6 | AI move suggestion | `ExpectimaxAdvisor` (behind the `MoveAdvisor` port) |
+- Java 25
+- Spring Boot 4.1.0 (starter-web, -validation, -webmvc-test)
+- springdoc-openapi 3.0.3 (Swagger UI)
+- Maven (bundled `./mvnw` wrapper)
 
----
+> **Version note.** Spring Boot and springdoc must stay on the same generation.
+> This project pairs Boot 4.x with springdoc 3.x. (Boot 3.x would pair with
+> springdoc 2.x.) Mixing generations puts two sets of auto-configuration on the
+> classpath and fails at startup with a duplicate-bean error.
+
+## Project structure
+
+```
+com.pontalti.game2048
+├── Game2048Application                 Spring Boot entry point
+│
+├── domain/                             core — framework-free, UNCHANGED
+│   ├── Board  Game  Direction  GameStatus  Position
+│   └── port/
+│       ├── MoveAdvisor                 output port: "suggest a move"
+│       └── GameRepository              output port: "store/find games by id"  (NEW)
+│
+└── adapter/
+    ├── ai/
+    │   └── ExpectimaxAdvisor           implements MoveAdvisor  (UNCHANGED)
+    ├── persistence/
+    │   └── InMemoryGameRepository      implements GameRepository (ConcurrentHashMap)
+    └── rest/                           inbound HTTP adapter  (NEW)
+        ├── GameController              the 5 public endpoints
+        ├── TestSupportController       @Profile("test") only — seeds a board for tests
+        ├── config/
+        │   └── BeanConfig              declares beans, keeps the domain Spring-free
+        ├── service/
+        │   ├── GameService             application-service interface (+ CreatedGame record)
+        │   └── GameServiceImpl         orchestrates repository + domain + advisor
+        ├── exception/
+        │   ├── GameExceptionHandler    @RestControllerAdvice -> HTTP status
+        │   └── GameNotFoundException
+        └── dto/
+            ├── MoveRequest  GameResponse  HintResponse  ErrorResponse
+            └── SeedGameRequest          test-only body for the seed endpoint
+```
+
+The dependency rule points inward: adapters depend on the domain; the domain
+depends on nothing external. That is what allowed the same core to be driven by
+four different interfaces over time.
 
 ## Prerequisites
 
-- **JDK 25** (the project is compiled for release 25).
-- **Maven 3.9+**.
+- JDK 25+
+- No local Maven required — use the `./mvnw` wrapper.
 
-JavaFX is resolved automatically as a Maven dependency. Because JavaFX ships
-native libraries that differ per operating system and CPU architecture, the build
-uses a **Maven profile to select the right ones**. You choose the profile that
-matches your system with the `-P` flag, as shown below.
-
----
-
-## Build
-
-Select the profile for your platform and build:
+## Build & run
 
 ```bash
-mvn clean package -P <profile>
-```
+# run the tests
+./mvnw clean test
 
-Replace `<profile>` with the one matching your operating system:
+# build the executable jar (target/game2048.jar)
+./mvnw clean package
 
-| OS / architecture | Profile | JavaFX natives bundled |
-|-------------------|---------|------------------------|
-| Linux (x86_64) | `fx-linux` | `linux` |
-| Windows (x86_64) | `fx-windows` | `win` |
-| macOS Intel (x86_64) | `fx-mac-intel` | `mac` |
-| macOS Apple Silicon (aarch64) | `fx-mac-arm` | `mac-aarch64` |
-
-For example, on Linux:
-
-```bash
-mvn clean package -P fx-linux
-```
-
-This compiles the code, runs the full test suite, and produces a self-contained
-executable jar at `target/game2048.jar` with the JavaFX natives for the selected
-profile bundled in.
-
-To skip the tests during a build, add `-DskipTests`:
-
-```bash
-mvn clean package -P fx-linux -DskipTests
-```
-
----
-
-## Run
-
-The jar has a single entry point that selects the interface from the first
-argument. **Swing is the default.** The run commands are identical across
-operating systems:
-
-```bash
-# Swing desktop GUI (default)
+# run the service
+./mvnw spring-boot:run
+# or, after packaging:
 java -jar target/game2048.jar
-
-# Text console
-java -jar target/game2048.jar console
-
-# JavaFX desktop GUI
-java -jar target/game2048.jar fx
 ```
 
-The JavaFX GUI can also be launched directly through Maven, which runs it on the
-module path (and avoids the fat-jar warning described
-[below](#note-on-the-javafx-fat-jar-warning)):
+The service starts on `http://localhost:8080`.
+
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/games` | Create a new game (two starting tiles) |
+| GET | `/games/{id}` | Get the current board and status |
+| POST | `/games/{id}/moves` | Play a move; body `{"direction":"LEFT"}` |
+| GET | `/games/{id}/hint` | AI-suggested move (does not change the game) |
+| DELETE | `/games/{id}` | Delete a game |
+
+- **Directions:** `LEFT`, `RIGHT`, `UP`, `DOWN`.
+- **Status:** `PLAYING`, `WON`, `LOST`.
+- **Board:** a 4x4 grid of numbers; `null` marks an empty cell (mirrors the
+  problem-statement JSON).
+
+### Swagger / OpenAPI
+
+With the app running:
+
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+## Example session (curl)
 
 ```bash
-mvn javafx:run -P <profile>
+# create a game and capture its id
+ID=$(curl -s -X POST http://localhost:8080/games | jq -r .id)
+
+# view the state
+curl -s http://localhost:8080/games/$ID | jq
+
+# ask the AI for a hint
+curl -s http://localhost:8080/games/$ID/hint | jq
+
+# play a move
+curl -s -X POST http://localhost:8080/games/$ID/moves \
+     -H 'Content-Type: application/json' \
+     -d '{"direction":"LEFT"}' | jq
+
+# delete the game
+curl -s -X DELETE http://localhost:8080/games/$ID -o /dev/null -w "%{http_code}\n"
 ```
 
-### Controls
+## Design notes
 
-| Interface | Move | Hint | New game | Quit |
-|-----------|------|------|----------|------|
-| Swing / JavaFX | Arrow keys or W/A/S/D | `H` | `N` | close window |
-| Console | W/A/S/D + Enter | `H` | -- | `Q` |
+**Stateless HTTP vs. stateful game.** Each request is independent, but a match
+carries state. Every game gets a UUID and is stored server-side through the
+`GameRepository` port; the client passes the id on each call. Swapping the
+in-memory store for Redis or a database would touch only the persistence adapter —
+not the domain or the REST layer.
 
----
+**Interface + implementation for the service.** `GameService` is an interface and
+`GameServiceImpl` the implementation, so the controller depends on the contract,
+not the concrete class. The small `CreatedGame` record is declared on the
+interface (it is part of the contract, letting `newGame()` return an id and a game
+together), not on the implementation.
 
-## Building and running per operating system
+**Concurrency.** `InMemoryGameRepository` is a singleton `@Repository` shared by
+all request threads, so its map is a `ConcurrentHashMap` (safe concurrent access).
+The map protects itself, not the `Game` objects inside it, so moves on the same
+game are serialized with `synchronized (game)` in `GameServiceImpl`. Different
+games lock on different instances and run fully in parallel.
 
-Only the build profile changes between systems; the `java -jar` run commands are
-the same everywhere.
+**Domain stays framework-free.** No Spring annotations leak into `domain/`. Beans
+(`MoveAdvisor`, `Random`) are declared in `config/BeanConfig`, which is precisely
+what keeps the domain a pure, independently testable core.
 
-### Linux (x86_64)
+## Testing
 
 ```bash
-mvn clean package -P fx-linux
-java -jar target/game2048.jar          # Swing
-java -jar target/game2048.jar console  # Console
-java -jar target/game2048.jar fx       # JavaFX
-mvn javafx:run -P fx-linux             # JavaFX via module path
+./mvnw test
 ```
 
-### Windows (x86_64)
+The suite covers:
 
-```powershell
-mvn clean package -P fx-windows
-java -jar target/game2048.jar          # Swing
-java -jar target/game2048.jar console  # Console
-java -jar target/game2048.jar fx       # JavaFX
-mvn javafx:run -P fx-windows           # JavaFX via module path
-```
+- **Domain** — `BoardTest`, `GameTest`: the exact examples from the problem
+  statement (moves, spawn, endgame, immutability).
+- **AI** — `ExpectimaxAdvisorTest`: the advisor never suggests an illegal move and
+  returns empty only at a dead end.
+- **Scenarios** — `GameScenarioTest`: win, loss, and hint driven purely over HTTP.
+  A known board is planted via the test-only `POST /test/games` endpoint, which is
+  guarded by `@Profile("test")` and therefore absent in production. A losing board
+  is planted as an already-terminal position rather than reached by play, to keep
+  the test deterministic — the random tile spawn would otherwise make it flaky.
 
-### macOS -- Intel (x86_64)
+## Notes
 
-```bash
-mvn clean package -P fx-mac-intel
-java -jar target/game2048.jar          # Swing
-java -jar target/game2048.jar console  # Console
-java -jar target/game2048.jar fx       # JavaFX
-mvn javafx:run -P fx-mac-intel         # JavaFX via module path
-```
-
-### macOS -- Apple Silicon (M1/M2/M3/M4, aarch64)
-
-```bash
-mvn clean package -P fx-mac-arm
-java -jar target/game2048.jar          # Swing
-java -jar target/game2048.jar console  # Console
-java -jar target/game2048.jar fx       # JavaFX
-mvn javafx:run -P fx-mac-arm           # JavaFX via module path
-```
-
-### How the profile works
-
-The `pom.xml` declares four profiles, one per platform. The selected profile sets
-the `javafx.platform` property, which becomes the `<classifier>` of the
-`javafx-controls` dependency — that classifier is what pulls in the correct native
-libraries.
-
-To list the profiles available in the project:
-
-```bash
-mvn help:all-profiles
-```
-
-> **Note:** the produced `game2048.jar` contains the natives of the profile it was
-> built with, so it is not portable to a different OS. This is intentional for
-> this project -- each user builds on their own machine before running.
-
----
-
-## Test
-
-Run the test suite (pick any valid profile so JavaFX resolves):
-
-```bash
-mvn test -P fx-linux
-```
-
-The suite covers the domain and the AI:
-
-- **`BoardTest`** -- the four moves, the single-merge-per-move rule, win/lose
-  detection, immutability, and defensive copying. The move and endgame cases use
-  the exact board examples from the problem statement.
-- **`GameTest`** -- status evaluation, the valid-move flow (move -> spawn ->
-  re-evaluate), invalid-move handling, and terminal-state guards. A fixed-seed
-  `Random` makes every test reproducible.
-- **`ExpectimaxAdvisorTest`** -- the advisor only ever returns a legal move,
-  returns empty at a dead end, is deterministic, and validates its depth argument.
-
----
-
-## The AI advisor
-
-The move suggestion (requirement 6) is an **offline expectimax** search -- no
-network, no external service, no credentials. Expectimax fits 2048 because the
-"opponent" is not adversarial: after each move a tile spawns *randomly*. Rather
-than assuming the worst placement (as minimax would), the search alternates:
-
-- **MAX nodes** -- the player picks the direction with the best expected value;
-- **CHANCE nodes** -- the spawn is modeled as a probability-weighted average over
-  every empty cell receiving a 2 (90%) or a 4 (10%).
-
-The search is depth-limited; leaf boards are scored by a heuristic combining free
-space, a "snake" positional gradient (which keeps large tiles ordered toward a
-corner), and smoothness (adjacent tiles close in value merge more easily). The
-search itself uses no randomness, so a given board always yields the same
-suggestion.
-
----
-
-## Architecture
-
-```
-domain/                 pure game rules -- no I/O, no UI, no framework
-  Board                 immutable 4x4 board; the four moves derive from "move left"
-  Direction, Position   value objects
-  Game, GameStatus      orchestrates a match (move -> spawn -> evaluate)
-  port/MoveAdvisor      output port: "suggest a move" without knowing how
-
-adapter/
-  ai/ExpectimaxAdvisor  offline AI implementing MoveAdvisor
-  ui/console/ConsoleUI  text adapter (blocking game loop)
-  ui/swing/SwingUI      Swing adapter (event-driven, Key Bindings)
-  ui/fx/FxUI            JavaFX adapter (event-driven, scene key handler)
-
-Main                    composition root; selects the UI by argument
-```
-
-The domain has zero dependencies on the adapters. Every interface translates its
-own input (a keystroke or a typed character) into a `Direction` and calls
-`Game.play(Direction)` -- which is why the three UIs are nearly identical and why
-swapping or adding one requires no change to the game rules or the tests.
-
----
-
-## Assumptions
-
-The problem statement invites reasonable assumptions; these are the ones made
-here:
-
-- **Board size** is fixed at 4x4 (matching every example in the statement).
-- A **new tile is a 2 with 90% probability and a 4 with 10%**, following the
-  original 2048. (The statement guarantees at least a 2; the 4 is a reasonable
-  extension it explicitly allows.)
-- A **fresh game starts with two randomly placed tiles**.
-- Empty cells are represented as `null` (mirroring the `null` used in the
-  statement's JSON), not `0`.
-- The game **stops at a win** (reaching 2048); there is no "keep going" mode.
-- A **new tile spawns only after a move that actually changes the board**; an
-  invalid move (one that changes nothing) neither spawns a tile nor advances the
-  game.
-- The AI advisor searches to a **default depth of 3 player moves**, which plays
-  strongly while remaining fast; the depth is configurable via the
-  `ExpectimaxAdvisor(int)` constructor.
-
----
-
-## Note on the JavaFX fat-jar warning
-
-Running the JavaFX mode from the executable jar prints:
-
-```
-WARNING: Unsupported JavaFX configuration: classes were loaded from 'unnamed module'
-```
-
-This is expected when JavaFX is loaded from the classpath (a fat jar) rather than
-the module path -- the game runs normally. To run the JavaFX GUI without the
-warning, use `mvn javafx:run`, which launches it on the module path.
+- The in-memory repository keeps games in a single server's memory; they are lost
+  on restart and not shared across instances. That is intentional for this demo —
+  making it durable or multi-instance means adding a Redis/JPA adapter behind the
+  same `GameRepository` port, with no change to the domain or the REST layer.
