@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: game-2048-rest
+
+server:
+  port: 8080
+
+# Swagger UI at http://localhost:8080/swagger-ui.html
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
