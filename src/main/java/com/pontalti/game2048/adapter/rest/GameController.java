@@ -3,6 +3,8 @@ package com.pontalti.game2048.adapter.rest;
 import com.pontalti.game2048.adapter.rest.dto.GameResponse;
 import com.pontalti.game2048.adapter.rest.dto.HintResponse;
 import com.pontalti.game2048.adapter.rest.dto.MoveRequest;
+import com.pontalti.game2048.adapter.rest.service.GameService;
+import com.pontalti.game2048.adapter.rest.service.GameServiceImpl;
 import com.pontalti.game2048.domain.Direction;
 import com.pontalti.game2048.domain.Game;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,7 +21,7 @@ import java.util.Optional;
 /**
  * REST adapter (inbound) for the 2048 game. This is the HTTP equivalent of the
  * console/Swing/JavaFX adapters: it translates HTTP requests into calls on the
- * domain via {@link GameService}, and never contains any game rules itself.
+ * domain via {@link GameServiceImpl}, and never contains any game rules itself.
  * <p>
  * The domain ({@code Game}, {@code Board}, {@code Direction}) is unchanged — the
  * whole REST layer is additive, which is exactly what the hexagonal architecture
@@ -39,7 +41,7 @@ public class GameController {
     @Operation(summary = "Create a new game", description = "Starts a fresh 2048 game with two random tiles.")
     @PostMapping
     public ResponseEntity<GameResponse> create(UriComponentsBuilder uri) {
-        GameService.CreatedGame created = service.newGame();
+        GameServiceImpl.CreatedGame created = service.newGame();
         GameResponse body = GameResponse.from(created.id(), created.game());
         URI location = uri.path("/games/{id}").buildAndExpand(created.id()).toUri();
         return ResponseEntity.created(location).body(body); // 201 Created

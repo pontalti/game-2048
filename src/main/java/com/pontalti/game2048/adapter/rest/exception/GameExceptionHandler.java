@@ -1,4 +1,4 @@
-package com.pontalti.game2048.adapter.rest;
+package com.pontalti.game2048.adapter.rest.exception;
 
 import com.pontalti.game2048.adapter.rest.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;

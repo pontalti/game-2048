@@ -1,4 +1,4 @@
-package com.pontalti.game2048.adapter.rest;
+package com.pontalti.game2048.adapter.rest.config;
 
 import com.pontalti.game2048.adapter.ai.ExpectimaxAdvisor;
 import com.pontalti.game2048.domain.port.MoveAdvisor;

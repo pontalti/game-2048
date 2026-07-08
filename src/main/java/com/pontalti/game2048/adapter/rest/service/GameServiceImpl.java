@@ -1,5 +1,6 @@
-package com.pontalti.game2048.adapter.rest;
+package com.pontalti.game2048.adapter.rest.service;
 
+import com.pontalti.game2048.adapter.rest.exception.GameNotFoundException;
 import com.pontalti.game2048.domain.Direction;
 import com.pontalti.game2048.domain.Game;
 import com.pontalti.game2048.domain.port.GameRepository;
@@ -22,19 +23,20 @@ import java.util.Random;
  * lock on different instances, so they still run fully in parallel.
  */
 @Service
-public class GameService {
+public class GameServiceImpl implements GameService{
 
     private final GameRepository repository;
     private final MoveAdvisor advisor;
     private final Random random;
 
-    public GameService(GameRepository repository, MoveAdvisor advisor, Random random) {
+    public GameServiceImpl(GameRepository repository, MoveAdvisor advisor, Random random) {
         this.repository = repository;
         this.advisor = advisor;
         this.random = random;
     }
 
     /** Creates a fresh game (two starting tiles) and returns its id + the game. */
+    @Override
     public CreatedGame newGame() {
         Game game = new Game(random);
         String id = repository.create(game);
@@ -42,6 +44,7 @@ public class GameService {
     }
 
     /** Returns the game for the given id, or throws {@link GameNotFoundException}. */
+    @Override
     public Game get(String id) {
         return repository.findById(id).orElseThrow(() -> new GameNotFoundException(id));
     }
@@ -50,6 +53,7 @@ public class GameService {
      * Applies a move to the game with the given id and returns the updated game.
      * Serialized per game instance to stay thread-safe under concurrent requests.
      */
+    @Override
     public Game move(String id, Direction direction) {
         Game game = get(id);
         synchronized (game) {
@@ -59,6 +63,7 @@ public class GameService {
     }
 
     /** Returns the AI's suggested move for the given game (does not modify it). */
+    @Override
     public Optional<Direction> hint(String id) {
         Game game = get(id);
         synchronized (game) {
@@ -67,13 +72,11 @@ public class GameService {
     }
 
     /** Deletes the game; throws {@link GameNotFoundException} if it did not exist. */
+    @Override
     public void delete(String id) {
         if (!repository.deleteById(id)) {
             throw new GameNotFoundException(id);
         }
     }
 
-    /** Small carrier pairing a new game with its generated id. */
-    public record CreatedGame(String id, Game game) {
-    }
 }

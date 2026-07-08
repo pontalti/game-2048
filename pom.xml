@@ -22,6 +22,7 @@
         <start-class>com.pontalti.game2048.Game2048Application</start-class>
         <!--openapi-->
         <springdoc.openapi.starter.webmvc.ui.version>3.0.3</springdoc.openapi.starter.webmvc.ui.version>
+        <lombok.version>1.18.46</lombok.version>
     </properties>
 
     <dependencies>
@@ -45,13 +46,13 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
             <scope>provided</scope>
         </dependency>
 
-        <!-- Tests -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
