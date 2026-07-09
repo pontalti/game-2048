@@ -1,6 +1,7 @@
 package com.pontalti.game2048.adapter.rest;
 
 import com.jayway.jsonpath.JsonPath;
+import com.pontalti.game2048.adapter.rest.controller.TestSupportController;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

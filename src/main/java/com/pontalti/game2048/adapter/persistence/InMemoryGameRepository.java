@@ -1,7 +1,7 @@
 package com.pontalti.game2048.adapter.persistence;
 
 import com.pontalti.game2048.domain.Game;
-import com.pontalti.game2048.domain.port.GameRepository;
+import com.pontalti.game2048.domain.port.out.GameRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;

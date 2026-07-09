@@ -1,10 +1,10 @@
-package com.pontalti.game2048.adapter.rest;
+package com.pontalti.game2048.adapter.rest.controller;
 
 import com.pontalti.game2048.adapter.rest.dto.GameResponse;
 import com.pontalti.game2048.adapter.rest.dto.SeedGameRequest;
 import com.pontalti.game2048.domain.Board;
 import com.pontalti.game2048.domain.Game;
-import com.pontalti.game2048.domain.port.GameRepository;
+import com.pontalti.game2048.domain.port.out.GameRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;

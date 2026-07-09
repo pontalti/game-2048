@@ -2,7 +2,7 @@ package com.pontalti.game2048.adapter.ai;
 
 import com.pontalti.game2048.domain.Board;
 import com.pontalti.game2048.domain.Direction;
-import com.pontalti.game2048.domain.port.MoveAdvisor;
+import com.pontalti.game2048.domain.port.out.MoveAdvisor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

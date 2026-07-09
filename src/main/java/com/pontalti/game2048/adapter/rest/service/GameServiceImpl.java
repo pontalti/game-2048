@@ -3,18 +3,20 @@ package com.pontalti.game2048.adapter.rest.service;
 import com.pontalti.game2048.adapter.rest.exception.GameNotFoundException;
 import com.pontalti.game2048.domain.Direction;
 import com.pontalti.game2048.domain.Game;
-import com.pontalti.game2048.domain.port.GameRepository;
-import com.pontalti.game2048.domain.port.MoveAdvisor;
+import com.pontalti.game2048.domain.port.in.GamePort;
+import com.pontalti.game2048.domain.port.out.GameRepository;
+import com.pontalti.game2048.domain.port.out.MoveAdvisor;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 import java.util.Random;
 
 /**
- * Application service for the REST adapter. It coordinates the repository (where
- * games live between requests), the domain ({@link Game}), and the AI
- * ({@link MoveAdvisor}) — but contains no game rules itself. All rules stay in
- * the domain; this class only wires a stateless HTTP world to a stateful game.
+ * Application service implementing the {@link GamePort} input port. It coordinates
+ * the output ports — the repository (where games live between requests) and the
+ * AI ({@link MoveAdvisor}) — with the domain ({@link Game}), but contains no game
+ * rules itself. All rules stay in the domain; this class only wires a stateless
+ * HTTP world to a stateful game, sitting on the driving side of the hexagon.
  * <p>
  * <b>Concurrency:</b> a {@link Game} is mutable and single-threaded by design,
  * while a web server handles requests in parallel. Moves on the same game are
@@ -23,7 +25,7 @@ import java.util.Random;
  * lock on different instances, so they still run fully in parallel.
  */
 @Service
-public class GameServiceImpl implements GameService{
+public class GameServiceImpl implements GamePort {
 
     private final GameRepository repository;
     private final MoveAdvisor advisor;

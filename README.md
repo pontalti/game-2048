@@ -4,15 +4,19 @@ A Spring Boot REST API that exposes a 2048 game engine over HTTP. The project
 demonstrates **hexagonal architecture (Ports & Adapters)**: the entire REST layer
 was added without changing a single line of the game domain. The same `Board`,
 `Game`, `Direction`, and expectimax AI that previously drove console, Swing, and
-JavaFX interfaces now sit behind HTTP, unchanged.
+JavaFX interfaces now sit behind HTTP — and a browser UI plays through that same
+API, unchanged core throughout.
 
 ## Highlights
 
 - **Domain untouched.** The game rules (`domain/`) and the AI (`adapter/ai/`) are
   byte-for-byte the same as the desktop version, with their original unit tests
   still passing.
-- **REST is purely additive.** A new inbound HTTP adapter plus one new port
-  (`GameRepository`) is all it took.
+- **Symmetric ports.** Both sides of the hexagon are modelled explicitly: an
+  input port (`port/in`) for driving the game, and output ports (`port/out`) for
+  persistence and the AI — all owned by the domain.
+- **REST + browser UI, both additive.** A REST adapter and a separate web client
+  were added on top of the same core; neither required domain changes.
 - **Full API with Swagger / OpenAPI 3.1.**
 - **End-to-end tests** that drive win, loss, and hint entirely over HTTP.
 
@@ -28,6 +32,27 @@ JavaFX interfaces now sit behind HTTP, unchanged.
 > springdoc 2.x.) Mixing generations puts two sets of auto-configuration on the
 > classpath and fails at startup with a duplicate-bean error.
 
+## Ports & Adapters at a glance
+
+The domain owns every port; adapters plug into them from outside. Dependencies
+always point inward, toward the domain.
+
+```
+   inbound adapters            input port         application        output ports          outbound adapters
+
+   HTTP client ─▶ GameController ─▶ [ port/in ] ─▶ GameServiceImpl ─▶ [ port/out ] ─▶ InMemoryGameRepository
+   Browser UI  ─▶ (REST)            GamePort                          GameRepository
+                                                                      MoveAdvisor    ─▶ ExpectimaxAdvisor
+```
+
+- **Input port** (`domain/port/in/GamePort`) — the use cases the app offers.
+  Inbound adapters (the REST controller; the browser UI via HTTP) depend on this
+  interface, never on the implementation.
+- **Output ports** (`domain/port/out/`) — `GameRepository` (persistence) and
+  `MoveAdvisor` (AI). The domain declares them; adapters implement them.
+- **`GameServiceImpl`** implements the input port and orchestrates the output
+  ports with the domain — it holds no game rules.
+
 ## Project structure
 
 ```
@@ -37,8 +62,11 @@ com.pontalti.game2048
 ├── domain/                             core — framework-free, UNCHANGED
 │   ├── Board  Game  Direction  GameStatus  Position
 │   └── port/
-│       ├── MoveAdvisor                 output port: "suggest a move"
-│       └── GameRepository              output port: "store/find games by id"  (NEW)
+│       ├── in/
+│       │   └── GamePort                input port: the game use cases (+ CreatedGame)
+│       └── out/
+│           ├── GameRepository          output port: "store/find games by id"
+│           └── MoveAdvisor             output port: "suggest a move"
 │
 └── adapter/
     ├── ai/                             AI advisor (implements MoveAdvisor)
@@ -47,14 +75,15 @@ com.pontalti.game2048
     │                                   run per legal direction on a virtual thread
     ├── persistence/
     │   └── InMemoryGameRepository      implements GameRepository (ConcurrentHashMap)
-    └── rest/                           inbound HTTP adapter  (NEW)
-        ├── GameController              the 5 public endpoints
-        ├── TestSupportController       @Profile("test") only — seeds a board for tests
+    └── rest/                           inbound HTTP adapter
+        ├── controller/
+        │   ├── GameController          the 5 public endpoints; depends on GamePort
+        │   └── TestSupportController   @Profile("test") only — seeds a board for tests
         ├── config/
-        │   └── BeanConfig              declares beans, keeps the domain Spring-free
+        │   ├── BeanConfig              declares beans, keeps the domain Spring-free
+        │   └── WebConfig               CORS for the browser UI
         ├── service/
-        │   ├── GameService             application-service interface (+ CreatedGame record)
-        │   └── GameServiceImpl         orchestrates repository + domain + advisor
+        │   └── GameServiceImpl         implements GamePort; orchestrates repo + domain + advisor
         ├── exception/
         │   ├── GameExceptionHandler    @RestControllerAdvice -> HTTP status
         │   └── GameNotFoundException
@@ -62,10 +91,6 @@ com.pontalti.game2048
             ├── MoveRequest  GameResponse  HintResponse  ErrorResponse
             └── SeedGameRequest          test-only body for the seed endpoint
 ```
-
-The dependency rule points inward: adapters depend on the domain; the domain
-depends on nothing external. That is what allowed the same core to be driven by
-four different interfaces over time.
 
 ## Prerequisites
 
@@ -111,6 +136,31 @@ With the app running:
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 
+## Web UI (browser client)
+
+A standalone React page plays the game in the browser by calling this API — it is
+just another inbound adapter, talking to the domain purely over HTTP. Keyboard
+controls: arrow keys or `W`/`A`/`S`/`D` to move, `H` for an AI hint.
+
+Because the UI is served from a different origin than the API, CORS must be open
+for it. `WebConfig` allows the common local origins (Vite `5173`, `3000`,
+`http.server` `8000`, Live Server `127.0.0.1:5500`); adjust the list to match
+wherever the UI is served.
+
+Quick way to run it locally:
+
+```bash
+# 1) start the API
+./mvnw spring-boot:run
+
+# 2) serve the UI from a folder containing the HTML, from an allowed origin
+python3 -m http.server 8000
+# then open http://localhost:8000 and point the client at http://localhost:8080
+```
+
+Serve the page over HTTP (not opened as a `file://` path), so its origin matches
+the CORS allow-list.
+
 ## Example session (curl)
 
 ```bash
@@ -134,11 +184,20 @@ curl -s -X DELETE http://localhost:8080/games/$ID -o /dev/null -w "%{http_code}\
 
 ## Design notes
 
+**Symmetric hexagon (in/out ports).** Every crossing of the domain boundary goes
+through a port the domain owns: `GamePort` on the driving side, `GameRepository`
+and `MoveAdvisor` on the driven side. Inbound adapters depend on the input port;
+outbound adapters implement the output ports. The domain depends on none of them.
+
+**Many front-ends, one core.** The same domain has been driven by console, Swing,
+JavaFX, a REST API, and now a browser UI. Each is an inbound adapter; none changed
+the game rules. The browser UI reaches the core through the REST adapter, so it is
+an adapter on top of an adapter — still no domain coupling.
+
 **Stateless HTTP vs. stateful game.** Each request is independent, but a match
 carries state. Every game gets a UUID and is stored server-side through the
-`GameRepository` port; the client passes the id on each call. Swapping the
-in-memory store for Redis or a database would touch only the persistence adapter —
-not the domain or the REST layer.
+`GameRepository` output port; the client passes the id on each call. Swapping the
+in-memory store for Redis or a database would touch only the persistence adapter.
 
 **AI: expectimax split into two classes.** `ExpectimaxAdvisor` is the top-level
 MAX node and parallel coordinator; for each legal direction it builds an
@@ -148,12 +207,6 @@ tasks share no mutable state and need no synchronization. The search is
 deterministic — the expectation is computed analytically (no random sampling), and
 ties are broken by direction order — so the same board always yields the same
 suggestion.
-
-**Interface + implementation for the service.** `GameService` is an interface and
-`GameServiceImpl` the implementation, so the controller depends on the contract,
-not the concrete class. The small `CreatedGame` record is declared on the
-interface (part of the contract, letting `newGame()` return an id and a game
-together), not on the implementation.
 
 **Concurrency.** `InMemoryGameRepository` is a singleton `@Repository` shared by
 all request threads, so its map is a `ConcurrentHashMap` (safe concurrent access).
@@ -188,4 +241,6 @@ The suite covers:
 - The in-memory repository keeps games in a single server's memory; they are lost
   on restart and not shared across instances. That is intentional for this demo —
   making it durable or multi-instance means adding a Redis/JPA adapter behind the
-  same `GameRepository` port, with no change to the domain or the REST layer.
+  same `GameRepository` output port, with no change to the domain or the REST layer.
+- `WebConfig` opens CORS for local development origins only. For a real deployment,
+  restrict the allowed origins to the actual UI host.

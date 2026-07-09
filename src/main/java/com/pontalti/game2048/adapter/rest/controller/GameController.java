@@ -1,12 +1,11 @@
-package com.pontalti.game2048.adapter.rest;
+package com.pontalti.game2048.adapter.rest.controller;
 
 import com.pontalti.game2048.adapter.rest.dto.GameResponse;
 import com.pontalti.game2048.adapter.rest.dto.HintResponse;
 import com.pontalti.game2048.adapter.rest.dto.MoveRequest;
-import com.pontalti.game2048.adapter.rest.service.GameService;
-import com.pontalti.game2048.adapter.rest.service.GameServiceImpl;
 import com.pontalti.game2048.domain.Direction;
 import com.pontalti.game2048.domain.Game;
+import com.pontalti.game2048.domain.port.in.GamePort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -19,29 +18,31 @@ import java.net.URI;
 import java.util.Optional;
 
 /**
- * REST adapter (inbound) for the 2048 game. This is the HTTP equivalent of the
- * console/Swing/JavaFX adapters: it translates HTTP requests into calls on the
- * domain via {@link GameServiceImpl}, and never contains any game rules itself.
+ * REST adapter (inbound / driving side) for the 2048 game. This is the HTTP
+ * equivalent of the console/Swing/JavaFX adapters: it translates HTTP requests
+ * into calls on the {@link GamePort} input port, and never contains any game
+ * rules itself.
  * <p>
- * The domain ({@code Game}, {@code Board}, {@code Direction}) is unchanged — the
- * whole REST layer is additive, which is exactly what the hexagonal architecture
- * is meant to enable.
+ * It depends only on the input port, not on any concrete service — so the
+ * implementation can change without touching the controller. The domain
+ * ({@code Game}, {@code Board}, {@code Direction}) is unchanged; the whole REST
+ * layer is additive, which is exactly what the hexagonal architecture enables.
  */
 @RestController
 @RequestMapping("/games")
 @Tag(name = "2048", description = "Play 2048 over HTTP")
 public class GameController {
 
-    private final GameService service;
+    private final GamePort service;
 
-    public GameController(GameService service) {
+    public GameController(GamePort service) {
         this.service = service;
     }
 
     @Operation(summary = "Create a new game", description = "Starts a fresh 2048 game with two random tiles.")
     @PostMapping
     public ResponseEntity<GameResponse> create(UriComponentsBuilder uri) {
-        GameServiceImpl.CreatedGame created = service.newGame();
+        GamePort.CreatedGame created = service.newGame();
         GameResponse body = GameResponse.from(created.id(), created.game());
         URI location = uri.path("/games/{id}").buildAndExpand(created.id()).toUri();
         return ResponseEntity.created(location).body(body); // 201 Created
