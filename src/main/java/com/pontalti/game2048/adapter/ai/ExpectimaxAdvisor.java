@@ -88,7 +88,7 @@ public final class ExpectimaxAdvisor implements MoveAdvisor {
                 continue; // illegal move: changes nothing, ignore it
             }
             legal.add(dir);
-            tasks.add(new ExpectedValue(moved, maxDepth));
+            tasks.add(new ExpectedValue(moved, this.maxDepth));
         }
 
         if (legal.isEmpty()) {
