@@ -125,7 +125,7 @@ public class GameTest {
     }
 
     @Test
-    @DisplayName("The no-arg-board constructor starts with two tiles")
+    @DisplayName("A fresh game starts with the configured number of initial tiles")
     public void freshGameStartsWithTwoTiles() {
         Game game = new Game(seeded());
         assertEquals(2, nonNullCount(game.getBoard()));

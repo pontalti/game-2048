@@ -26,21 +26,27 @@ import java.util.Random;
  */
 public final class Game {
 
+    /** Number of tiles a fresh board starts with (classic 2048 opening). */
+    private static final int INITIAL_TILES = 2;
+
     private final Random random;
     private Board board;
     private GameStatus status;
 
     /**
-     * Creates a game with the initial board already set up: two randomly generated tiles
-     * on an empty board (usual 2048 convention).
+     * Creates a game with the initial board already set up:
+     * {@value #INITIAL_TILES} randomly generated tiles on an empty board
+     * (usual 2048 convention).
      *
      * @param random source of randomness (injected for reproducibility)
      */
     public Game(Random random){
         this.random = Objects.requireNonNull(random, "random cannot be null");
-        this.board = Board.empty()
-                            .spawnRandom(random)
-                            .spawnRandom(random);
+        Board initial = Board.empty();
+        for (int i = 0; i < INITIAL_TILES; i++) {
+            initial = initial.spawnRandom(random);
+        }
+        this.board = initial;
         this.status = GameStatus.PLAYING;
     }
 
@@ -63,7 +69,6 @@ public final class Game {
     }
 
     /**
-
      * Applies a move in the given direction and returns the new game status.
      * <p>
      * If the game has already ended ({@code WON} or {@code LOST}), skip the move and
