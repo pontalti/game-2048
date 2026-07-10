@@ -11,3 +11,23 @@ springdoc:
     path: /swagger-ui.html
   api-docs:
     path: /v3/api-docs
+
+info:
+  app:
+    name: Game 2048
+    description: Game 2048 - Spring Boot Actuator
+    version: 1.0.0
+
+management:
+  server:
+    port: 8081
+  info:
+    env:
+      enabled: true
+  endpoint:
+    health:
+      show-details: always
+  endpoints:
+    web:
+      exposure:
+        include: "*"
