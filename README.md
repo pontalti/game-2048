@@ -20,7 +20,7 @@ AI, and each interface is just an adapter plugged into the same core.
 | 4 | Move Up / Down | `Board.move(Direction.UP / DOWN)` |
 | 5 | Spawn a 2/4 after a valid move | `Game.play` -> `Board.spawnRandom` |
 | 6 | Win / Lose detection | `Board.hasWon` / `Board.isGameOver` |
-| 6 | AI move suggestion | `ExpectimaxAdvisor` (behind the `MoveAdvisor` port) |
+| 6 | AI move suggestion | `ExpectimaxAdvisor` (behind the `MoveAdvisor` output port) |
 
 ---
 
@@ -207,30 +207,54 @@ corner), and smoothness (adjacent tiles close in value merge more easily). The
 search itself uses no randomness, so a given board always yields the same
 suggestion.
 
+The advisor is split across two classes. `ExpectimaxAdvisor` is the top-level MAX
+node and coordinator: for each legal direction it builds an `ExpectedValue` task
+and evaluates the four subtrees concurrently on virtual threads. `ExpectedValue`
+holds one move's subtree -- the CHANCE node, the deeper search, and the leaf
+heuristic -- as a `Callable`. Because `Board` is immutable, the parallel tasks
+share no mutable state and need no synchronization; and because results are
+compared in a fixed direction order (replacing only on a strictly greater score),
+the parallel search stays deterministic.
+
 ---
 
 ## Architecture
 
 ```
-domain/                 pure game rules -- no I/O, no UI, no framework
-  Board                 immutable 4x4 board; the four moves derive from "move left"
-  Direction, Position   value objects
-  Game, GameStatus      orchestrates a match (move -> spawn -> evaluate)
-  port/MoveAdvisor      output port: "suggest a move" without knowing how
+domain/                  pure game rules -- no I/O, no UI, no framework
+  Board                  immutable 4x4 board; the four moves derive from "move left"
+  Direction, Position    value objects
+  Game, GameStatus       orchestrates a match (move -> spawn -> evaluate)
+  port/out/MoveAdvisor   output port: "suggest a move" without knowing how
 
 adapter/
-  ai/ExpectimaxAdvisor  offline AI implementing MoveAdvisor
-  ui/console/ConsoleUI  text adapter (blocking game loop)
-  ui/swing/SwingUI      Swing adapter (event-driven, Key Bindings)
-  ui/fx/FxUI            JavaFX adapter (event-driven, scene key handler)
+  ai/ExpectimaxAdvisor   offline AI implementing MoveAdvisor (MAX node + coordinator)
+  ai/ExpectedValue       one move's subtree (CHANCE node), evaluated in parallel
+  ui/console/ConsoleUI   text adapter (blocking game loop)
+  ui/swing/SwingUI       Swing adapter (event-driven, Key Bindings)
+  ui/fx/FxUI             JavaFX adapter (event-driven, scene key handler)
 
-Main                    composition root; selects the UI by argument
+Main                     composition root; selects the UI by argument
 ```
 
 The domain has zero dependencies on the adapters. Every interface translates its
 own input (a keystroke or a typed character) into a `Direction` and calls
 `Game.play(Direction)` -- which is why the three UIs are nearly identical and why
 swapping or adding one requires no change to the game rules or the tests.
+
+### Ports: only an output port here
+
+This desktop version has a single port, and it is an **output** (driven) port:
+`MoveAdvisor`, in `domain/port/out/`. There is deliberately **no input port**.
+The UIs and the domain share one process and one memory space, so an interface
+drives the game by holding a `Game` and calling its public API (`play`,
+`getBoard`, `getStatus`) directly -- the aggregate's own API *is* the entry
+boundary. An explicit input port earns its place only when there is a delivery
+boundary to cross (a network, a stateless protocol). The REST branch of this
+project adds exactly that: a `GamePort` input port and a `GameRepository` output
+port, because there the client is out of process and game state must be stored
+between stateless requests. The shared core -- rules and AI -- is identical in
+both branches; only the ports differ.
 
 ---
 

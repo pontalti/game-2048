@@ -1,4 +1,4 @@
-package com.pontalti.game2048.domain.port;
+package com.pontalti.game2048.domain.port.out;
 
 import com.pontalti.game2048.domain.Board;
 import com.pontalti.game2048.domain.Direction;

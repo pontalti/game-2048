@@ -4,7 +4,7 @@ import com.pontalti.game2048.domain.Board;
 import com.pontalti.game2048.domain.Direction;
 import com.pontalti.game2048.domain.Game;
 import com.pontalti.game2048.domain.GameStatus;
-import com.pontalti.game2048.domain.port.MoveAdvisor;
+import com.pontalti.game2048.domain.port.out.MoveAdvisor;
 
 import javax.swing.*;
 import java.awt.*;

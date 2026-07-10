@@ -5,7 +5,7 @@ import com.pontalti.game2048.adapter.ui.console.ConsoleUI;
 import com.pontalti.game2048.adapter.ui.fx.FxUI;
 import com.pontalti.game2048.adapter.ui.swing.SwingUI;
 import com.pontalti.game2048.domain.Game;
-import com.pontalti.game2048.domain.port.MoveAdvisor;
+import com.pontalti.game2048.domain.port.out.MoveAdvisor;
 
 import javafx.application.Application;
 
