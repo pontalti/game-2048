@@ -26,24 +26,25 @@ import java.util.Random;
  */
 public final class Game {
 
-    /** Number of tiles a fresh board starts with (classic 2048 opening). */
-    private static final int INITIAL_TILES = 2;
-
     private final Random random;
     private Board board;
     private GameStatus status;
 
     /**
-     * Creates a game with the initial board already set up:
-     * {@value #INITIAL_TILES} randomly generated tiles on an empty board
-     * (usual 2048 convention).
+     * Creates a game with the initial board already set up: the configured number
+     * of tiles on an empty board. The count is drawn from the range
+     * {@link InitialGameTileLimit#MIN}..{@link InitialGameTileLimit#MAX}; when both
+     * bounds are equal (the current setup, both 2) every game starts with exactly
+     * that many tiles, the classic 2048 opening. Widening the range makes the
+     * starting count vary, following the statement's "a random number of 2s".
      *
      * @param random source of randomness (injected for reproducibility)
      */
     public Game(Random random){
         this.random = Objects.requireNonNull(random, "random cannot be null");
         Board initial = Board.empty();
-        for (int i = 0; i < INITIAL_TILES; i++) {
+        int tiles = InitialGameTileLimit.MIN.value() + random.nextInt(InitialGameTileLimit.MAX.value() - InitialGameTileLimit.MIN.value() + 1);
+        for (int i = 0; i < tiles; i++) {
             initial = initial.spawnRandom(random);
         }
         this.board = initial;

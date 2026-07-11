@@ -125,10 +125,14 @@ public class GameTest {
     }
 
     @Test
-    @DisplayName("A fresh game starts with the configured number of initial tiles")
-    public void freshGameStartsWithTwoTiles() {
+    @DisplayName("A fresh game starts with the expected number of initial tiles")
+    public void freshGameStartsWithInitialTiles() {
         Game game = new Game(seeded());
-        assertEquals(2, nonNullCount(game.getBoard()));
+        int count = nonNullCount(game.getBoard());
+        assertTrue(count >= InitialGameTileLimit.MIN.value() && count <= InitialGameTileLimit.MAX.value(),
+                () -> "expected between " + InitialGameTileLimit.MIN.value()
+                        + " and " + InitialGameTileLimit.MAX.value()
+                        + " initial tiles but got " + count);
         assertEquals(GameStatus.PLAYING, game.getStatus());
     }
 

@@ -14,7 +14,7 @@ AI, and each interface is just an adapter plugged into the same core.
 
 | # | Requirement | Where |
 |---|-------------|-------|
-| 1 | Generate an initial board | `Game` constructor + `Board.spawnRandom` |
+| 1 | Generate an initial board | `Game` constructor loops `Board.spawnRandom`, count from `InitialGameTileLimit` |
 | 2 | Move Left | `Board.move(Direction.LEFT)` |
 | 3 | Move Right | `Board.move(Direction.RIGHT)` |
 | 4 | Move Up / Down | `Board.move(Direction.UP / DOWN)` |
@@ -225,6 +225,7 @@ domain/                  pure game rules -- no I/O, no UI, no framework
   Board                  immutable 4x4 board; the four moves derive from "move left"
   Direction, Position    value objects
   Game, GameStatus       orchestrates a match (move -> spawn -> evaluate)
+  InitialGameTileLimit   enum (MIN/MAX) parameterizing the initial tile count
   port/out/MoveAdvisor   output port: "suggest a move" without knowing how
 
 adapter/
@@ -267,7 +268,11 @@ here:
 - A **new tile is a 2 with 90% probability and a 4 with 10%**, following the
   original 2048. (The statement guarantees at least a 2; the 4 is a reasonable
   extension it explicitly allows.)
-- A **fresh game starts with two randomly placed tiles**.
+- A **fresh game starts with two randomly placed tiles**. The count is
+  parameterized by the `InitialGameTileLimit` enum (`MIN`..`MAX`, both currently
+  2), so it lives in a single place and is trivial to widen without touching the
+  game logic. The statement says "a random number of `2`s"; two is a deliberate,
+  stated reading of that, and equal bounds make it deterministic.
 - Empty cells are represented as `null` (mirroring the `null` used in the
   statement's JSON), not `0`.
 - The game **stops at a win** (reaching 2048); there is no "keep going" mode.
