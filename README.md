@@ -61,6 +61,7 @@ com.pontalti.game2048
 │
 ├── domain/                             core — framework-free, UNCHANGED
 │   ├── Board  Game  Direction  GameStatus  Position
+│   ├── InitialGameTileLimit            enum (MIN/MAX) parameterizing the initial tile count
 │   └── port/
 │       ├── in/
 │       │   └── GamePort                input port: the game use cases (+ CreatedGame)
@@ -217,6 +218,13 @@ games lock on different instances and run fully in parallel.
 **Domain stays framework-free.** No Spring annotations leak into `domain/`. Beans
 (`MoveAdvisor`, `Random`) are declared in `config/BeanConfig`, which is precisely
 what keeps the domain a pure, independently testable core.
+
+**Initial tiles are parameterized.** The number of tiles a fresh game starts with
+lives in the `InitialGameTileLimit` enum (`MIN`..`MAX`, both currently 2), a single
+named source referenced by both the `Game` constructor and its test. With equal
+bounds every game starts with exactly two tiles (the classic 2048 opening, a stated
+reading of the statement's "a random number of 2s"); widening the range is a
+one-value change and the test adapts automatically, since it reads the enum's bounds.
 
 ## Testing
 
