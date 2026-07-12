@@ -93,8 +93,17 @@ public final class Board {
     }
 
     /**
-     * Collapses (merges to the left) all rows of a matrix.
-     * Pure method: receives a matrix and returns a new one.
+     * Collapses every row of the given matrix toward the left.
+     * <p>
+     * Each row is processed independently using {@link #mergeLeft(Integer[])},
+     * which moves non-empty tiles to the left and merges adjacent tiles according
+     * to the game rules.
+     * <p>
+     * This method does not modify the supplied matrix. It returns a new matrix
+     * containing the collapsed rows.
+     *
+     * @param grid the matrix whose rows are to be collapsed
+     * @return a new matrix with every row collapsed toward the left
      */
     private static Integer[][] collapseRows(Integer[][] grid) {
         Integer[][] result = new Integer[SIZE][];
@@ -139,7 +148,16 @@ public final class Board {
         return result;
     }
 
-    /** Mirrors each row horizontally (reverses the order of the columns). */
+    /**
+     * Creates a horizontally mirrored copy of the given square matrix.
+     * <p>
+     * The order of the columns in each row is reversed without modifying the
+     * original matrix. For every cell, the value at {@code grid[r][c]} is copied
+     * to {@code result[r][SIZE - 1 - c]}.
+     *
+     * @param grid the matrix to mirror horizontally
+     * @return a new matrix with each row mirrored horizontally
+     */
     private static Integer[][] mirror(Integer[][] grid) {
         Integer[][] result = new Integer[SIZE][SIZE];
         for(int r = 0; r < SIZE; r++) {
@@ -150,7 +168,16 @@ public final class Board {
         return result;
     }
 
-    /** Transposes the matrix: {@code result[c][r] = grid[r][c]} (rows become columns). */
+    /**
+     * Creates the transpose of a square matrix.
+     * <p>
+     * Transposition swaps rows and columns without modifying the original
+     * matrix. For every cell, the value at {@code grid[r][c]} is copied to
+     * {@code result[c][r]}.
+     *
+     * @param grid the matrix to transpose
+     * @return a new transposed matrix
+     */
     private static Integer[][] transpose(Integer[][] grid) {
         Integer[][] result = new Integer[SIZE][SIZE];
         for(int r = 0; r < SIZE; r++) {
@@ -163,7 +190,7 @@ public final class Board {
 
     /**
      * Returns a new board with a tile placed in a specific position.
-     * Deterministic and public because the AI ​​(expectimax) needs to simulate
+     * Deterministic and public because the AI (expectimax) needs to simulate
      * "what if a 2 appeared here?" without involving randomness.
      *
      * @param pos tile position
@@ -198,7 +225,15 @@ public final class Board {
         return withTileAt(pos, value);
     }
 
-    /** Lists all empty positions ({@code null}) on the board. */
+    /**
+     * Returns all currently empty positions on the board.
+     * <p>
+     * A position is considered empty when its corresponding cell contains
+     * {@code null}. The board itself is not modified.
+     *
+     * @return a new list containing the row and column of every empty cell;
+     *         an empty list if the board has no available positions
+     */
     public List<Position> emptyPositions() {
         List<Position> positions = new ArrayList<>();
         for(int r = 0; r < SIZE; r++) {
@@ -211,17 +246,31 @@ public final class Board {
         return positions;
     }
 
-    /** {@code true} if the board contains the victory tile (2048). */
+    /**
+     * Checks whether the board contains the winning tile.
+     * <p>
+     * The board is considered won as soon as any cell contains
+     * {@link #WINNING_TILE}.
+     *
+     * @return {@code true} if at least one cell contains the winning tile;
+     *         {@code false} otherwise
+     */
     public boolean hasWon(){
         return Arrays.stream(cells)
                         .flatMap(Arrays::stream)
-                        .anyMatch(value -> value != null && value == WINNING_TILE);
+                        .anyMatch(value -> value != null && value.equals(WINNING_TILE));
     }
 
     /**
-     * {@code true} if there are no more possible moves: board full
-     * <b>and</b> with no pair of equal neighbors (horizontal or vertical) that
-     * could merge.
+     * Checks whether the game has no remaining valid moves.
+     * <p>
+     * The game is over only when the board contains no empty positions and no
+     * horizontally or vertically adjacent tiles have the same value and could
+     * therefore be merged.
+     *
+     * @return {@code true} if no valid move is possible;
+     *         {@code false} if the board still contains an empty position or at
+     *         least one mergeable pair of neighboring tiles
      */
     public boolean isGameOver(){
         if(!emptyPositions().isEmpty()) {
@@ -243,16 +292,30 @@ public final class Board {
         return true;
     }
 
+
     /**
-     * Compares only the grid content with another board. Used by whoever
-     * orchestrates the game to detect if a move has actually changed something
-     * (and therefore, if a new tile should be generated).
+     * Compares the grid content of this board with another board.
+     * <p>
+     * This method compares only the values stored in the cells and is typically
+     * used to determine whether a move changed the board and whether a new tile
+     * should be generated.
+     *
+     * @param other the board whose grid content is to be compared with this board
+     * @return {@code true} if both boards contain the same values in the same
+     *         positions; {@code false} otherwise
      */
     public boolean sameGridAs(Board other) {
         return Arrays.deepEquals(this.cells, other.cells);
     }
 
-    /** Returns a copy of the internal array (never the actual reference). */
+    /**
+     * Returns a deep copy of the board's internal grid.
+     * <p>
+     * Both the outer array and each row are copied, so changes made to the returned
+     * matrix do not affect the internal state of this board.
+     *
+     * @return a new matrix containing the current board values
+     */
     public Integer[][] toArray(){
         Integer[][] copy = new Integer[SIZE][];
         for(int r = 0; r < SIZE; r++) {
@@ -261,7 +324,35 @@ public final class Board {
         return copy;
     }
 
-    /** Equals/hashCode based on grid content, consistent with {@link #sameGridAs}. */
+    /**
+     * Returns the sum of all tile values currently present on the board.
+     * <p>
+     * Empty cells ({@code null}) are ignored and contribute zero to the total.
+     *
+     * @return the sum of all non-null tile values
+     */
+    public int sumOfTiles() {
+        int sum = 0;
+        for (Integer[] row : this.cells) {
+            for (Integer value : row) {
+                if (value != null) {
+                    sum += value;
+                }
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * Compares this board with another object based on grid content.
+     * <p>
+     * Two boards are considered equal when they contain the same values in the
+     * same positions. This behavior is consistent with {@link #sameGridAs(Board)}.
+     *
+     * @param o the object to compare with this board
+     * @return {@code true} if the given object is a board with identical grid
+     *         content; {@code false} otherwise
+     */
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -269,12 +360,28 @@ public final class Board {
         return Arrays.deepEquals(cells, other.cells);
     }
 
+    /**
+     * Returns a hash code calculated from the board's grid content.
+     * <p>
+     * This implementation is consistent with {@link #equals(Object)}.
+     *
+     * @return the hash code of the board's grid content
+     */
     @Override
     public int hashCode() {
         return Arrays.deepHashCode(cells);
     }
 
-    /** Simple text representation of the game board, useful for debugging and for the console UI. */
+    /**
+     * Returns a formatted text representation of the board.
+     * <p>
+     * Each row is written on a separate line. Empty cells are represented by
+     * {@code "."}, while occupied cells display their numeric value using a fixed
+     * width for alignment. This representation is useful for debugging and for
+     * console-based user interfaces.
+     *
+     * @return a formatted string representing the current board state
+     */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
@@ -286,4 +393,5 @@ public final class Board {
         }
         return sb.toString();
     }
+
 }
