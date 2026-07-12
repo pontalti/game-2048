@@ -29,6 +29,7 @@ public final class Game {
     private final Random random;
     private Board board;
     private GameStatus status;
+    private int score;
 
     /**
      * Creates a game with the initial board already set up: the configured number
@@ -49,6 +50,7 @@ public final class Game {
         }
         this.board = initial;
         this.status = GameStatus.PLAYING;
+        this.score = 0;
     }
 
     /**
@@ -67,6 +69,7 @@ public final class Game {
          * won or lost.
          */
         this.status = evaluate(this.board);
+        this.score = 0;
     }
 
     /**
@@ -101,12 +104,21 @@ public final class Game {
         //Valid move: generates a new 2/4 and updates the state.
         this.board = moved.spawnRandom(this.random);
         this.status = evaluate(this.board);
+        this.score = this.board.sumOfTiles();
         return this.status;
     }
 
     /**
-     * Determines the status of a board: victory takes priority over
-     * defeat (if 2048 appears, we win, even if there is no more space).
+     * Evaluates the current status of the given board.
+     * <p>
+     * A winning board takes precedence over a losing board. Therefore, when the
+     * winning tile is present, this method returns {@link GameStatus#WON} even if
+     * no further moves are available.
+     *
+     * @param board the board whose status is to be evaluated
+     * @return {@link GameStatus#WON} if the board contains the winning tile,
+     *         {@link GameStatus#LOST} if no valid moves remain, or
+     *         {@link GameStatus#PLAYING} otherwise
      */
     private static GameStatus evaluate(Board board){
         if(board.hasWon()){
@@ -118,14 +130,38 @@ public final class Game {
         return GameStatus.PLAYING;
     }
 
-    /** Current board (unchangeable — the UI only reads it for rendering). */
+    /**
+     * Returns the current board.
+     * <p>
+     * The returned {@link Board} is exposed for reading and rendering purposes.
+     * The game remains responsible for replacing the current board when a move is
+     * applied.
+     *
+     * @return the current board
+     */
     public Board getBoard() {
         return this.board;
     }
 
-    /** Current match status. */
+    /**
+     * Returns the current status of the game.
+     *
+     * @return the current {@link GameStatus}
+     */
     public GameStatus getStatus() {
         return this.status;
+    }
+
+    /**
+     * Returns the total score accumulated by the player.
+     * <p>
+     * Points are awarded whenever two equal tiles are merged. The number of
+     * points awarded for a merge is equal to the value of the resulting tile.
+     *
+     * @return the player's current total score
+     */
+    public int getScore() {
+        return this.score;
     }
 
 }
