@@ -29,7 +29,6 @@ public final class Game {
     private final Random random;
     private Board board;
     private GameStatus status;
-    private int score;
 
     /**
      * Creates a game with the initial board already set up: the configured number
@@ -50,7 +49,6 @@ public final class Game {
         }
         this.board = initial;
         this.status = GameStatus.PLAYING;
-        this.score = 0;
     }
 
     /**
@@ -69,7 +67,6 @@ public final class Game {
          * won or lost.
          */
         this.status = evaluate(this.board);
-        this.score = 0;
     }
 
     /**
@@ -104,7 +101,6 @@ public final class Game {
         //Valid move: generates a new 2/4 and updates the state.
         this.board = moved.spawnRandom(this.random);
         this.status = evaluate(this.board);
-        this.score = this.board.sumOfTiles();
         return this.status;
     }
 
@@ -150,18 +146,6 @@ public final class Game {
      */
     public GameStatus getStatus() {
         return this.status;
-    }
-
-    /**
-     * Returns the total score accumulated by the player.
-     * <p>
-     * Points are awarded whenever two equal tiles are merged. The number of
-     * points awarded for a merge is equal to the value of the resulting tile.
-     *
-     * @return the player's current total score
-     */
-    public int getScore() {
-        return this.score;
     }
 
 }
