@@ -23,10 +23,11 @@ import java.util.Scanner;
  * <p>
  * <b>AI hint:</b> the advisor is used through the {@link MoveAdvisor} port, not
  * its concrete implementation, so the UI depends only on the abstraction. The
- * hint command reads the board and prints a suggestion without advancing the game.
+ * hint command reads the board and prints a suggestion without advancing the game
+ * or affecting the score.
  * <p>
- * <b>Presentation lives here:</b> rendering the grid is the UI's job, not the
- * {@code Board}'s. ({@code Board.toString} remains only a debug aid.)
+ * <b>Presentation lives here:</b> rendering the grid and the score is the UI's job,
+ * not the {@code Board}'s. ({@code Board.toString} remains only a debug aid.)
  * <p>
  * <b>Injected dependencies:</b> {@link Game}, {@link MoveAdvisor} and
  * {@link Scanner} are all passed in, so tests can drive the loop with scripted
@@ -47,8 +48,8 @@ public final class ConsoleUI {
     /**
      * Starts and manages the main game loop.
      * <p>
-     * During each iteration, the method displays the current board, reads the
-     * player's input, and processes the requested command or movement.
+     * During each iteration, the method displays the current board and score, reads
+     * the player's input, and processes the requested command or movement.
      * <p>
      * The loop continues until one of the following conditions occurs:
      * <ul>
@@ -64,7 +65,7 @@ public final class ConsoleUI {
         printInstructions();
 
         while(this.game.getStatus() == GameStatus.PLAYING){
-            render(this.game.getBoard());
+            render(this.game.getBoard(), this.game.getScore());
 
             /*
                 EOF (Ctrl+D or a piped input that ran out): exit gracefully
@@ -77,7 +78,7 @@ public final class ConsoleUI {
             String input = this.scanner.nextLine().trim().toLowerCase();
 
             if(input.equals("q")){
-                System.out.println("You quit. Bye!");
+                System.out.println("You quit with a score of " + this.game.getScore() + ". Bye!");
                 return;
             }
 
@@ -104,9 +105,9 @@ public final class ConsoleUI {
             }
         }
 
-        // Loop exited because the game ended: show the final board and outcome.
-        render(this.game.getBoard());
-        printResult(this.game.getStatus());
+        // Loop exited because the game ended: show the final board, score and outcome.
+        render(this.game.getBoard(), this.game.getScore());
+        printResult(this.game.getStatus(), this.game.getScore());
     }
 
     /**
@@ -117,8 +118,8 @@ public final class ConsoleUI {
      * analyzes the current board and returns the best available direction.
      * <p>
      * This method does not perform the suggested move and does not modify the game
-     * state. It only prints the recommendation so that the player can decide
-     * whether to follow it.
+     * state — asking for a hint never changes the board or the score. It only prints
+     * the recommendation so that the player can decide whether to follow it.
      * <p>
      * If the advisor cannot find a valid move because the board has reached a dead
      * end, it returns an empty result and this method displays an appropriate
@@ -182,21 +183,26 @@ public final class ConsoleUI {
     }
 
     /**
-     * Displays the current board as a simple grid with visible borders.
+     * Displays the current board as a simple grid with visible borders, with the
+     * player's score shown above it.
      * <p>
      * Each board cell is rendered in its corresponding row and column. Cells
      * containing tiles display their numeric values, while empty cells are shown as
      * blank spaces.
      * <p>
-     * This method is responsible only for the visual representation of the board in
-     * the console. It does not modify the board or any other part of the game state.
+     * The score is passed in rather than read from the {@link Game} so that this
+     * method stays a pure rendering function of the state it is given. It is
+     * responsible only for the visual representation and does not modify the board,
+     * the score, or any other part of the game state.
      *
      * @param board the current game board to display
+     * @param score the player's current score
      */
-    private static void render(Board board){
+    private static void render(Board board, int score){
         Integer[][] grid = board.toArray();
         String border = "+------+------+------+------+";
         StringBuilder sb = new StringBuilder("\n");
+        sb.append("Score: ").append(score).append("\n");
         for(Integer[] row : grid){
             sb.append(border).append("\n");
             for(Integer value : row){
@@ -214,10 +220,17 @@ public final class ConsoleUI {
         System.out.println("H=hint (ask the AI)   Q=quit.   Reach 2048 to win!");
     }
 
-    private static void printResult(GameStatus status){
+    /**
+     * Prints the final outcome of the match together with the score the player
+     * finished with.
+     *
+     * @param status the terminal status of the game
+     * @param score  the player's final score
+     */
+    private static void printResult(GameStatus status, int score){
         switch (status){
-            case WON -> System.out.println("\nYou reached 2048 - you win!");
-            case LOST -> System.out.println("\nNo moves left - game over!");
+            case WON -> System.out.println("\nYou reached 2048 - you win! Final score: " + score);
+            case LOST -> System.out.println("\nNo moves left - game over! Final score: " + score);
             case PLAYING -> {/* required for exhaustiveness; never reached at runtime */}
         }
     }

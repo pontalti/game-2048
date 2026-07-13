@@ -19,6 +19,7 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 
 import java.util.Random;
@@ -51,10 +52,19 @@ public class FxUI extends Application {
     private Label statusLabel;
 
     /**
+     * Displays the player's running score.
+     * <p>
+     * Like {@link #statusLabel}, it is a field rather than a local variable inside
+     * {@link #start(Stage)} so that {@link #render()} can refresh it after every
+     * move and whenever a new game begins.
+     */
+    private Label scoreLabel;
+
+    /**
      * Creates, configures, and displays the main JavaFX game window.
      * <p>
-     * This method builds the board grid, action buttons, status line, keyboard
-     * controls, and initial visual state.
+     * This method builds the board grid, score line, action buttons, status line,
+     * keyboard controls, and initial visual state.
      * <p>
      * JavaFX invokes this method on the JavaFX Application Thread after the
      * application is launched.
@@ -80,6 +90,10 @@ public class FxUI extends Application {
             }
         }
 
+        // Score sits right under the board, in bold so it reads at a glance.
+        scoreLabel = new Label("Score: 0");
+        scoreLabel.setFont(Font.font("SansSerif", FontWeight.BOLD, 18));
+
         statusLabel = new Label();
         statusLabel.setFont(Font.font(16));
 
@@ -96,7 +110,9 @@ public class FxUI extends Application {
 
         Label help = new Label("Arrows or WASD to move  ·  H for a hint  ·  N for a new game");
 
-        VBox root = new VBox(12, grid, actions, statusLabel, help);
+        // The VBox is aligned to CENTER, so every child — including the score — is
+        // horizontally centered without any extra configuration.
+        VBox root = new VBox(12, grid, scoreLabel, actions, statusLabel, help);
         root.setAlignment(Pos.CENTER);
         root.setPadding(new Insets(16));
 
@@ -172,8 +188,10 @@ public class FxUI extends Application {
      * running. Requests made after the game has ended are ignored.
      * <p>
      * When the game is active, the direction is passed to
-     * {@link Game#play(Direction)}. The interface is then rendered again to
-     * display the latest board and game status.
+     * {@link Game#play(Direction)}, which updates the board, awards the points
+     * earned by any merges, spawns a new tile when appropriate, and re-evaluates
+     * the status. The interface is then rendered again to display the latest
+     * board, score and game status.
      *
      * @param direction the movement direction requested by the player
      */
@@ -194,7 +212,8 @@ public class FxUI extends Application {
      * direction according to its evaluation strategy.
      * <p>
      * This method does not execute the suggested move and does not change the
-     * game state. If no legal move exists, an appropriate message is displayed.
+     * game state — asking for a hint never affects the score. If no legal move
+     * exists, an appropriate message is displayed.
      */
     private void showHint() {
         advisor.suggest(game.getBoard()).ifPresentOrElse(
@@ -206,7 +225,8 @@ public class FxUI extends Application {
      * Starts a new game and refreshes the user interface.
      * <p>
      * A new {@link Game} instance replaces the current game, restoring the
-     * initial board and status.
+     * initial board and status — and resetting the score to zero, which
+     * {@link #render()} then reflects on screen.
      * <p>
      * Only the adapter state is replaced. The domain implementation remains
      * unchanged, and no game rules are duplicated in this method.
@@ -222,8 +242,11 @@ public class FxUI extends Application {
      * Every cell is updated with its latest tile value and visual style. Empty
      * cells are displayed without text.
      * <p>
-     * The status line is also updated to indicate whether the game is still in
-     * progress, has been won, or has ended because no moves remain.
+     * The score line is refreshed from the domain, and the status line is updated
+     * to indicate whether the game is still in progress, has been won, or has ended
+     * because no moves remain. Because every state-changing action ({@link #play}
+     * and {@link #newGame}) calls this method, the score on screen always matches
+     * the domain.
      * <p>
      * This method changes only the visual representation and does not modify
      * the board or any other domain state.
@@ -239,6 +262,8 @@ public class FxUI extends Application {
                 cell.setStyle(styleFor(value));
             }
         }
+
+        scoreLabel.setText("Score: " + game.getScore());
 
         switch (game.getStatus()) {
             case WON -> statusLabel.setText("You win!");

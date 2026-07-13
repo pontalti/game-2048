@@ -47,6 +47,15 @@ public final class SwingUI {
     private final JLabel[][] cells = new JLabel[Board.SIZE][Board.SIZE];
     private final JLabel statusLabel = new JLabel(" ");
 
+    /**
+     * Displays the player's running score.
+     * <p>
+     * It is a field — not a local variable inside {@link #launch()} — precisely so
+     * that {@link #render()} can refresh it after every move and whenever a new game
+     * starts, exactly as it does for {@link #statusLabel}.
+     */
+    private final JLabel scoreLabel = new JLabel("Score: 0", SwingConstants.CENTER);
+
     public SwingUI(Game game, MoveAdvisor advisor, Random random) {
         this.game = Objects.requireNonNull(game, "game cannot be null");
         this.advisor = Objects.requireNonNull(advisor, "advisor cannot be null");
@@ -105,14 +114,23 @@ public final class SwingUI {
                 SwingConstants.CENTER);
         statusLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
+        // Make the score stand out a little from the help text.
+        scoreLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
+
         JPanel south = new JPanel();
         south.setLayout(new BoxLayout(south, BoxLayout.Y_AXIS));
 
+        // In a vertical BoxLayout, horizontal centering of each child is controlled
+        // by its alignmentX (SwingConstants.CENTER only centers the text inside the
+        // label, not the label inside the panel).
+        scoreLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         buttons.setAlignmentX(Component.CENTER_ALIGNMENT);
         statusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         help.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        south.add(buttons);                        // era: south.add(hintButton);
+        south.add(scoreLabel);                     // score right below the board
+        south.add(Box.createVerticalStrut(8));
+        south.add(buttons);
         south.add(Box.createVerticalStrut(8));
         south.add(statusLabel);
         south.add(Box.createVerticalStrut(4));
@@ -200,10 +218,11 @@ public final class SwingUI {
      * <p>
      * When the game is running, the direction is passed to
      * {@link Game#play(Direction)} so that the domain logic can update the board,
-     * generate a new tile when appropriate, and re-evaluate the game status.
+     * award the points earned by any merges, generate a new tile when appropriate,
+     * and re-evaluate the game status.
      * <p>
      * After the move is processed, the interface is repainted to display the latest
-     * board state and status information.
+     * board, score and status information.
      *
      * @param dir the direction of the move requested by the player
      */
@@ -221,9 +240,9 @@ public final class SwingUI {
      * The advisor analyzes the current board and returns the best available
      * direction based on its evaluation strategy.
      * <p>
-     * This method does not perform the suggested move and does not modify the board
-     * or any other part of the game state. It only presents the recommendation in
-     * the user interface.
+     * This method does not perform the suggested move and does not modify the board,
+     * the score, or any other part of the game state. It only presents the
+     * recommendation in the user interface.
      * <p>
      * If no valid move is available, the method displays an appropriate message
      * indicating that the board has reached a dead end.
@@ -242,8 +261,10 @@ public final class SwingUI {
      * row and column. Cells containing tiles are updated to display their current
      * values, while empty cells are rendered without a value.
      * <p>
-     * It also updates the status line with the latest game information, such as the
-     * current score, game status, or other messages shown to the player.
+     * It also refreshes the score and updates the status line with the latest game
+     * information. Because every action that can change the state ({@link #play} and
+     * {@link #newGame}) calls this method, the score shown is always in sync with
+     * the domain — including being reset to zero when a new game starts.
      * <p>
      * This method only updates the visual representation of the game. It does not
      * perform moves or modify the board or any other part of the domain state.
@@ -260,6 +281,9 @@ public final class SwingUI {
                         : new Color(0xf9f6f2));
             }
         }
+
+        scoreLabel.setText("Score: " + game.getScore());
+
         switch (game.getStatus()) {
             case WON     -> statusLabel.setText("You win!");
             case LOST    -> statusLabel.setText("Game over — no moves left");
@@ -330,16 +354,19 @@ public final class SwingUI {
      * Starts a new game and refreshes the user interface.
      * <p>
      * This method creates a new {@link Game} instance, replacing the current game
-     * with a fresh initial state.
+     * with a fresh initial state — which also resets the score to zero.
      * <p>
      * After the new game is created, the interface is repainted so that the board,
-     * score, and status information reflect the new session.
+     * score, and status information reflect the new session. The status line is
+     * cleared as well, so a hint or an end-of-game message from the previous match
+     * does not linger.
      * <p>
      * Only the adapter state is updated. The domain implementation remains
      * unchanged, and no game rules are duplicated or modified by this method.
      */
     private void newGame() {
         this.game = new Game(random);
+        statusLabel.setText(" "); // clear a leftover hint / "game over" message
         render();
     }
 
