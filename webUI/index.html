@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>2048 — REST client</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root {
+    --bg: #1a1714;
+    --panel: #2b2622;
+    --board-bg: #362f2a;
+    --cell-empty: #423a34;
+    --text: #f7f2ea;
+    --muted: #a89e92;
+    --accent: #f2b179;
+    --accent-strong: #f59563;
+    --grid-gap: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+  }
+  #root { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+
+  .app { width: 100%; max-width: 460px; }
+
+  .titlebar {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .title {
+    font-size: 56px; font-weight: 800; letter-spacing: -2px;
+    line-height: 1; color: var(--text);
+  }
+  .title .k { color: var(--accent-strong); }
+  .subtitle { color: var(--muted); font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  .statusrow {
+    display: flex; align-items: center; gap: 12px; margin: 16px 0;
+    min-height: 40px;
+  }
+  /* Score panel — mirrors the desktop UIs, which show the score above the board */
+  .scorebox {
+    background: var(--panel); border-radius: 10px;
+    padding: 8px 18px; text-align: center; min-width: 118px;
+  }
+  .scorebox .label {
+    font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 2px;
+  }
+  .scorebox .value {
+    font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums;
+    color: var(--text); line-height: 1.1;
+  }
+  .scorebox .value.bump { animation: bump 220ms ease; }
+  @keyframes bump {
+    0%   { transform: scale(1);    color: var(--text); }
+    40%  { transform: scale(1.18); color: var(--accent); }
+    100% { transform: scale(1);    color: var(--text); }
+  }
+  /* the "+8" that floats up when a move scores */
+  .gain {
+    font-size: 15px; font-weight: 800; color: var(--accent);
+    animation: floatUp 700ms ease forwards;
+  }
+  @keyframes floatUp {
+    0%   { opacity: 0; transform: translateY(6px); }
+    25%  { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+  .badge {
+    margin-left: auto;
+    font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    padding: 6px 12px; border-radius: 999px; background: var(--panel); color: var(--muted);
+  }
+  .badge.playing { color: var(--accent); }
+  .badge.won { background: var(--accent-strong); color: #241f1b; }
+  .badge.lost { background: #6b4a3a; color: #f7dcc9; }
+  .hintline {
+    min-height: 20px; margin-bottom: 8px; font-size: 13px; color: var(--muted);
+  }
+  .hintline b { color: var(--accent); font-weight: 700; letter-spacing: 1px; }
+  .hint {
+    font-size: 13px; color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .hint b { color: var(--accent); font-weight: 700; letter-spacing: 1px; }
+
+  .board {
+    background: var(--board-bg);
+    border-radius: 12px;
+    padding: var(--grid-gap);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: var(--grid-gap);
+    aspect-ratio: 1 / 1;
+    position: relative;
+  }
+  .cell {
+    background: var(--cell-empty);
+    border-radius: 8px;
+    display: grid; place-items: center;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    transition: transform 90ms ease;
+  }
+  .cell.pop { animation: pop 140ms ease; }
+  @keyframes pop { 0% { transform: scale(0.6); } 100% { transform: scale(1); } }
+
+  /* Classic 2048 tile palette */
+  .t2    { background:#eee4da; color:#6b6157; }
+  .t4    { background:#ede0c8; color:#6b6157; }
+  .t8    { background:#f2b179; color:#fff; }
+  .t16   { background:#f59563; color:#fff; }
+  .t32   { background:#f67c5f; color:#fff; }
+  .t64   { background:#f65e3b; color:#fff; }
+  .t128  { background:#edcf72; color:#fff; font-size: 0.85em; }
+  .t256  { background:#edcc61; color:#fff; font-size: 0.85em; }
+  .t512  { background:#edc850; color:#fff; font-size: 0.85em; }
+  .t1024 { background:#edc53f; color:#fff; font-size: 0.7em; }
+  .t2048 { background:#edc22e; color:#fff; font-size: 0.7em; box-shadow: 0 0 24px rgba(237,194,46,.6); }
+  .tbig  { background:#3c3a32; color:#fff; font-size: 0.7em; }
+
+  .controls { display: flex; gap: 10px; margin-top: 18px; }
+  button {
+    font: inherit; font-weight: 700; cursor: pointer;
+    border: none; border-radius: 10px; padding: 12px 16px;
+    background: var(--panel); color: var(--text);
+    transition: background 120ms ease, transform 60ms ease;
+  }
+  button:hover { background: #3a332d; }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent-strong); color: #241f1b; }
+  button.primary:hover { background: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .help { margin-top: 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .help kbd {
+    background: var(--panel); border-radius: 5px; padding: 2px 7px;
+    font-family: ui-monospace, monospace; font-size: 12px; color: var(--text);
+  }
+  .banner {
+    margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+    font-size: 13px; background: #3a2f28; color: var(--accent);
+    border: 1px solid #4d3f34;
+  }
+  .config {
+    margin-top: 20px; padding: 14px; border-radius: 10px;
+    background: var(--panel); font-size: 13px; color: var(--muted);
+  }
+  .config label { display:block; margin-bottom: 6px; color: var(--text); font-weight: 600; }
+  .config input {
+    width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid #4a4038;
+    background: var(--bg); color: var(--text); font: inherit; margin-bottom: 8px;
+  }
+  .config .mode { display: flex; align-items: center; gap: 8px; }
+  .overlay {
+    position: absolute; inset: 0; border-radius: 12px;
+    background: rgba(26,23,20,.82); display: grid; place-items: center;
+    text-align: center; padding: 20px;
+  }
+  .overlay h2 { font-size: 36px; margin-bottom: 4px; }
+  .overlay.won h2 { color: var(--accent-strong); }
+  .overlay p { color: var(--muted); margin-bottom: 6px; }
+  .overlay .final { color: var(--muted); margin-bottom: 16px; }
+  .overlay .final b { color: var(--text); font-size: 20px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ---------------------------------------------------------------------------
+// API layer. Two implementations behind the same interface:
+//   - realApi(baseUrl): talks to your Spring Boot service over HTTP.
+//   - demoApi():        a local in-browser stand-in so the UI works anywhere
+//                       (e.g. this sandbox) without a backend. Mirrors the
+//                       server's rules closely enough to play.
+// Switch via the toggle in the UI. In your environment, use "Live API".
+// ---------------------------------------------------------------------------
+
+function realApi(baseUrl) {
+  const base = baseUrl.replace(/\/$/, "");
+  async function j(res) {
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.status === 204 ? null : res.json();
+  }
+  return {
+    newGame: () => fetch(`${base}/games`, { method: "POST" }).then(j),
+    get: (id) => fetch(`${base}/games/${id}`).then(j),
+    move: (id, direction) =>
+      fetch(`${base}/games/${id}/moves`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction }),
+      }).then(j),
+    hint: (id) => fetch(`${base}/games/${id}/hint`).then(j),
+    remove: (id) => fetch(`${base}/games/${id}`, { method: "DELETE" }).then(j),
+  };
+}
+
+// --- Demo API: a faithful-enough local 2048, same JSON shapes as the server ---
+function demoApi() {
+  const store = {};
+  const SIZE = 4, WIN = 2048;
+  const rnd = () => Math.random();
+  const emptyCells = (g) => {
+    const out = [];
+    for (let r=0;r<SIZE;r++) for (let c=0;c<SIZE;c++) if (g[r][c]==null) out.push([r,c]);
+    return out;
+  };
+  const spawn = (g) => {
+    const e = emptyCells(g); if (!e.length) return;
+    const [r,c] = e[Math.floor(rnd()*e.length)];
+    g[r][c] = rnd() < 0.9 ? 2 : 4;
+  };
+  // Returns the merged row AND the points it earned. The 2048 rule: each merge
+  // awards the value of the RESULTING tile (two 2s -> a 4 -> 4 points).
+  const mergeLeft = (row) => {
+    const v = row.filter(x => x!=null); const out = []; let pts = 0;
+    for (let i=0;i<v.length;i++){
+      if (i+1<v.length && v[i]===v[i+1]){ const nv = v[i]*2; out.push(nv); pts += nv; i++; }
+      else out.push(v[i]);
+    }
+    while (out.length<SIZE) out.push(null);
+    return [out, pts];
+  };
+  // Collapses every row to the left, summing the points across rows.
+  const collapse = (g) => {
+    const rows = []; let pts = 0;
+    for (const r of g) { const [rr, pp] = mergeLeft(r); rows.push(rr); pts += pp; }
+    return [rows, pts];
+  };
+  const clone = (g) => g.map(r => r.slice());
+  const eq = (a,b) => JSON.stringify(a)===JSON.stringify(b);
+  const mirror = (g) => g.map(r => r.slice().reverse());
+  const transpose = (g) => g[0].map((_,c)=>g.map(r=>r[c]));
+  // Mirrors the Java Board.moveScored: returns [board, pointsEarned].
+  const move = (g,dir) => {
+    let x = clone(g), pts = 0, c;
+    if (dir==="LEFT")  { [x, pts] = collapse(x); }
+    if (dir==="RIGHT") { [c, pts] = collapse(mirror(x)); x = mirror(c); }
+    if (dir==="UP")    { [c, pts] = collapse(transpose(x)); x = transpose(c); }
+    if (dir==="DOWN")  { [c, pts] = collapse(mirror(transpose(x))); x = transpose(mirror(c)); }
+    return [x, pts];
+  };
+  const hasWon = (g) => g.some(r=>r.some(v=>v===WIN));
+  const gameOver = (g) => {
+    if (emptyCells(g).length) return false;
+    for (let r=0;r<SIZE;r++) for (let c=0;c<SIZE;c++){
+      if (c+1<SIZE && g[r][c]===g[r][c+1]) return false;
+      if (r+1<SIZE && g[r][c]===g[r+1][c]) return false;
+    }
+    return true;
+  };
+  const evaluate = (g) => hasWon(g) ? "WON" : (gameOver(g) ? "LOST" : "PLAYING");
+  const dirs = ["LEFT","RIGHT","UP","DOWN"];
+  const suggest = (g) => {
+    // cheap demo hint: first direction that changes the board
+    for (const d of dirs) { const [m] = move(g,d); if (!eq(m,g)) return d; }
+    return null;
+  };
+  const resp = (id) => ({ id, board: store[id].board, score: store[id].score, status: store[id].status });
+  const delay = (v) => new Promise(res => setTimeout(()=>res(v), 60)); // feel async
+
+  return {
+    newGame: () => {
+      const id = "demo-" + Math.random().toString(36).slice(2,10);
+      const g = Array.from({length:SIZE},()=>Array(SIZE).fill(null));
+      spawn(g); spawn(g);
+      store[id] = { board: g, score: 0, status: evaluate(g) };
+      return delay(resp(id));
+    },
+    get: (id) => delay(resp(id)),
+    move: (id, direction) => {
+      const s = store[id];
+      if (s.status !== "PLAYING") return delay(resp(id));
+      const [moved, pts] = move(s.board, direction);
+      if (!eq(moved, s.board)) {
+        s.score += pts;          // points only on a valid move — same rule as the domain
+        spawn(moved);
+        s.board = moved;
+        s.status = evaluate(moved);
+      }
+      return delay(resp(id));
+    },
+    hint: (id) => delay({ suggestion: suggest(store[id].board) }),
+    remove: (id) => { delete store[id]; return delay(null); },
+  };
+}
+
+const KEY_TO_DIR = {
+  ArrowLeft: "LEFT", ArrowRight: "RIGHT", ArrowUp: "UP", ArrowDown: "DOWN",
+  a: "LEFT", d: "RIGHT", w: "UP", s: "DOWN",
+  A: "LEFT", D: "RIGHT", W: "UP", S: "DOWN",
+};
+
+function tileClass(v) {
+  if (v == null) return "cell";
+  if (v > 2048) return "cell tbig pop";
+  return `cell t${v} pop`;
+}
+
+function Board({ board }) {
+  return (
+    <div className="board" role="grid" aria-label="2048 board">
+      {board.flatMap((row, r) =>
+        row.map((v, c) => (
+          <div key={`${r}-${c}-${v}`} className={tileClass(v)} role="gridcell">
+            {v != null ? v : ""}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [mode, setMode] = useState("live"); // "demo" | "live"
+  const [baseUrl, setBaseUrl] = useState("http://localhost:8080");
+  const [game, setGame] = useState(null);
+  const [hint, setHint] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [gain, setGain] = useState(null);   // the "+8" floater after a scoring move
+  const [bump, setBump] = useState(false);  // pulse on the score when it changes
+
+  const apiRef = useRef(null);
+  apiRef.current = mode === "live" ? realApi(baseUrl) : demoApi();
+
+  const start = useCallback(async () => {
+    setError(null); setHint(null); setGain(null); setBusy(true);
+    try {
+      const g = await apiRef.current.newGame();
+      setGame(g);
+    } catch (e) {
+      setError("Could not reach the API. Check the base URL and that CORS is enabled on the server.");
+    } finally { setBusy(false); }
+  }, [mode, baseUrl]);
+
+  // start a game on first load and whenever the mode changes
+  useEffect(() => { start(); /* eslint-disable-next-line */ }, [mode]);
+
+  const doMove = useCallback(async (direction) => {
+    if (!game || busy || game.status !== "PLAYING") return;
+    setHint(null); setBusy(true);
+    const before = game.score ?? 0;
+    try {
+      const g = await apiRef.current.move(game.id, direction);
+      // The server is the source of truth for the score; we only diff it to
+      // decide whether to play the "+N" animation.
+      const earned = (g.score ?? 0) - before;
+      if (earned > 0) {
+        setGain(earned);
+        setBump(true);
+        setTimeout(() => setGain(null), 700);
+        setTimeout(() => setBump(false), 240);
+      }
+      setGame(g);
+    } catch (e) {
+      setError("Move failed. Is the API reachable?");
+    } finally { setBusy(false); }
+  }, [game, busy]);
+
+  const askHint = useCallback(async () => {
+    if (!game || game.status !== "PLAYING") return;
+    try {
+      const h = await apiRef.current.hint(game.id);
+      setHint(h.suggestion);
+    } catch (e) { setError("Hint failed."); }
+  }, [game]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "h" || e.key === "H") { e.preventDefault(); askHint(); return; }
+      const dir = KEY_TO_DIR[e.key];
+      if (dir) { e.preventDefault(); doMove(dir); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [doMove, askHint]);
+
+  const status = game?.status ?? "PLAYING";
+  const score = game?.score ?? 0;
+  const board = game?.board ?? Array.from({length:4},()=>Array(4).fill(null));
+
+  return (
+    <div className="app">
+      <div className="titlebar">
+        <div className="title">20<span className="k">48</span></div>
+        <div className="subtitle">REST client</div>
+      </div>
+
+      <div className="statusrow">
+        <div className="scorebox">
+          <div className="label">Score</div>
+          <div className={"value" + (bump ? " bump" : "")}>{score}</div>
+        </div>
+        {gain != null && <span className="gain">+{gain}</span>}
+        <span className={`badge ${status.toLowerCase()}`}>{status}</span>
+      </div>
+
+      <div className="hintline">
+        {hint && <>hint: <b>{hint}</b></>}
+      </div>
+
+      <div style={{ position: "relative" }}>
+        <Board board={board} />
+        {status !== "PLAYING" && (
+          <div className={`overlay ${status.toLowerCase()}`}>
+            <div>
+              <h2>{status === "WON" ? "You win!" : "Game over"}</h2>
+              <p>{status === "WON" ? "You reached 2048." : "No moves left."}</p>
+              <div className="final">Final score: <b>{score}</b></div>
+              <button className="primary" onClick={start}>New game</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="controls">
+        <button className="primary" onClick={start} disabled={busy}>New game</button>
+        <button onClick={askHint} disabled={busy || status !== "PLAYING"}>Hint (H)</button>
+      </div>
+
+      {error && <div className="banner">{error}</div>}
+
+      <div className="help">
+        Move with <kbd>&larr;</kbd> <kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>&rarr;</kbd>
+        or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>. Ask the AI with <kbd>H</kbd>.
+      </div>
+
+      <div className="config">
+        <div className="mode">
+          <input
+            id="live" type="checkbox"
+            checked={mode === "live"}
+            onChange={(e) => setMode(e.target.checked ? "live" : "demo")}
+          />
+          <label htmlFor="live" style={{margin:0}}>
+            Live API {mode === "live" ? "(calling your server)" : "(demo mode — no backend needed)"}
+          </label>
+        </div>
+        {mode === "live" && (
+          <div style={{marginTop:10}}>
+            <label htmlFor="url">API base URL</label>
+            <input id="url" value={baseUrl} onChange={(e)=>setBaseUrl(e.target.value)} />
+            <div style={{fontSize:12}}>Requires CORS enabled on the server (see WebConfig).</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
