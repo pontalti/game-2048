@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.Random;
 
 /**
- * Orchestrates a 2048 game: maintains the current board and game status,
+ * Orchestrates a 2048 game: maintains the current board, game status and score,
  * applies moves, and determines when a new tile should be generated and when
  * the game ends.
  * <p>
@@ -19,16 +19,29 @@ import java.util.Random;
  * the constructor so that tests can use a fixed seed and produce fully
  * reproducible games.
  * <p>
- * <b>Valid move flow</b> (requirement 5): move → if the board changed →
- * generate a new 2/4 tile → reassess the win/loss condition. If the move does
- * not change anything, no tile is generated and the status remains
- * {@code PLAYING}.
+ * <b>Valid move flow</b> (requirement 5): move → if the board changed → add the
+ * points earned by that move's merges → generate a new 2/4 tile → reassess the
+ * win/loss condition. If the move does not change anything, no tile is generated,
+ * no points are awarded, and the status remains {@code PLAYING}.
+ * <p>
+ * <b>Scoring:</b> the score is accumulated <i>here</i>, not in {@link Board}. The
+ * board only computes how many points a move would earn ({@link Board#moveScored});
+ * it stays immutable and stateless. This is what allows the AI to simulate
+ * thousands of hypothetical moves without ever inflating the player's real score.
  */
 public final class Game {
 
     private final Random random;
     private Board board;
     private GameStatus status;
+
+    /**
+     * Running score: the sum of all points earned by merges since the game began.
+     * Lives here — and not in {@link Board} — because the board is immutable and is
+     * also used by the AI to simulate hypothetical moves; accumulating there would
+     * both break immutability and let simulated moves inflate the real score.
+     */
+    private int score;
 
     /**
      * Creates a game with the initial board already set up: the configured number
@@ -43,18 +56,23 @@ public final class Game {
     public Game(Random random){
         this.random = Objects.requireNonNull(random, "random cannot be null");
         Board initial = Board.empty();
-        int tiles = InitialGameTileLimit.MIN.value() + random.nextInt(InitialGameTileLimit.MAX.value() - InitialGameTileLimit.MIN.value() + 1);
+        int tiles = InitialGameTileLimit.MIN.value()
+                + random.nextInt(InitialGameTileLimit.MAX.value() - InitialGameTileLimit.MIN.value() + 1);
         for (int i = 0; i < tiles; i++) {
             initial = initial.spawnRandom(random);
         }
         this.board = initial;
         this.status = GameStatus.PLAYING;
+        this.score = 0;
     }
 
     /**
      * Alternative constructor that accepts a ready-made starting board. Useful for
      * testing (setting up a specific scenario, e.g., a board one step away from victory)
      * and for loading positions from the problem statement examples.
+     * <p>
+     * The score starts at zero: points are only earned by merges played through
+     * {@link #play(Direction)}, so a board handed in ready-made carries no history.
      *
      * @param initialBoard starting board
      * @param random randomness source
@@ -63,10 +81,11 @@ public final class Game {
         this.random = Objects.requireNonNull(random, "random cannot be null");
         this.board = Objects.requireNonNull(initialBoard, "board cannot be null");
         /*
-         * Reassesses the status right away: the provided board may already be
-         * won or lost.
+         Reassesses the status right away: the provided board may already be
+         won or lost.
          */
         this.status = evaluate(this.board);
+        this.score = 0;
     }
 
     /**
@@ -76,9 +95,14 @@ public final class Game {
      * only returns the current status — the UI should not be able to "continue" a
      * ended game.
      * <p>
-     * If the move does not change the board (invalid move), no tile is
-     * generated and the status remains {@code PLAYING}; the UI can detect this
-     * by comparing the board before/after, if you want to display "invalid move".
+     * If the move does not change the board (invalid move), no tile is generated,
+     * no points are awarded, and the status remains {@code PLAYING}; the UI can
+     * detect this by comparing the board before/after, if you want to display
+     * "invalid move".
+     * <p>
+     * On a valid move the points earned by that move's merges are added to the
+     * running {@link #getScore() score}, a new 2/4 tile is generated, and the status
+     * is reassessed.
      *
      * @param dir direction already translated by the UI
      * @return the resulting {@link GameStatus} after the move
@@ -86,22 +110,46 @@ public final class Game {
     public GameStatus play(Direction dir){
         Objects.requireNonNull(dir, "dir cannot be null");
 
-        // Match ended: nothing more is being processed.
+        /*
+        Match ended: nothing more is being processed.
+        */
         if (this.status != GameStatus.PLAYING){
             return this.status;
         }
 
-        Board moved = this.board.move(dir);
+        /*
+        One single computation: the resulting board and the points it earned.
+        */
+        MoveResult result = this.board.moveScored(dir);
+        Board moved = result.board();
 
-        //Invalid move: the move didn't change anything. It doesn't generate a tile, it doesn't change the status.
+        /*
+        Invalid move: the move didn't change anything. It doesn't generate a tile,
+        it doesn't score, it doesn't change the status.
+        */
         if (moved.sameGridAs(this.board)){
             return this.status;
         }
-
-        //Valid move: generates a new 2/4 and updates the state.
+        /*
+        Valid move: score the merges, generate a new 2/4, and update the state.
+        */
+        addScore(result.points());
         this.board = moved.spawnRandom(this.random);
         this.status = evaluate(this.board);
         return this.status;
+    }
+
+    /**
+     * Adds the points earned by a valid move to the running score.
+     * <p>
+     * Private on purpose: the score may only change as a consequence of a real move
+     * played through {@link #play(Direction)}. Exposing this would let any adapter
+     * inflate the score at will, breaking the guarantee that it reflects actual play.
+     *
+     * @param points points earned by the move's merges (never negative)
+     */
+    private void addScore(int points) {
+        this.score += points;
     }
 
     /**
@@ -146,6 +194,22 @@ public final class Game {
      */
     public GameStatus getStatus() {
         return this.status;
+    }
+
+    /**
+     * Returns the player's current score: the sum of the points earned by every
+     * merge made since the game began.
+     * <p>
+     * Scoring follows the original 2048 rule — each merge awards the value of the
+     * resulting tile (merging two 2s into a 4 awards 4 points). Sliding tiles
+     * without merging, and invalid moves, award nothing. Asking the AI for a hint
+     * does not affect the score, since the advisor only simulates moves on
+     * immutable boards.
+     *
+     * @return the accumulated score, starting at 0
+     */
+    public int getScore() {
+        return this.score;
     }
 
 }

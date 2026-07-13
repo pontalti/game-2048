@@ -19,6 +19,12 @@ import java.util.*;
  * <b>Project Key:</b> the four moves are the same algorithm. We only
  * implemented "move left" in one line ({@link #mergeLeft}); the
  * other three are derived by transposition and/or mirroring of the matrix.
+ * <p>
+ * <b>Scoring:</b> the board <i>computes</i> the points a move would earn
+ * ({@link #moveScored}), but it never <i>accumulates</i> them. Accumulation belongs
+ * to {@code Game}, which knows whether a move was actually played. This keeps the
+ * board a pure, immutable value — and it is what prevents the AI's thousands of
+ * simulated moves from inflating the player's real score.
  */
 public final class Board {
 
@@ -71,46 +77,83 @@ public final class Board {
      * ({@link #spawnRandom}), because it should only happen if the move
      * actually changed the board, and that decision rests with whoever orchestrates the game
      * (the {@code Game} class), not the {@code Board}.
+     * <p>
+     * Delegates to {@link #moveScored(Direction)} and discards the points, so the AI
+     * can simulate moves freely without any scoring side effects.
      *
      * @param dir direction of the move
      * @return new {@code Board} with the slid and merged cells
      */
     public Board move(Direction dir) {
-        Integer[][] result = switch (dir){
-            //Left: the base case, applied directly to each line.
-            case LEFT -> collapseRows(cells);
-
-            // Right: mirrors each line, collapses to the left, mirrors back.
-            case  RIGHT -> mirror(collapseRows(mirror(cells)));
-
-            // Top: transpose (columns become rows), collapse to the left, transpose back.
-            case UP -> transpose(collapseRows(transpose(cells)));
-
-            // Bass: transpose, then treat as "right" (mirror/collapse/mirror), transpose back.
-            case DOWN -> transpose(mirror(collapseRows(mirror(transpose(cells)))));
-        };
-        return new Board(result);
+        return moveScored(dir).board();
     }
 
     /**
-     * Collapses every row of the given matrix toward the left.
+     * Applies a move and returns both the resulting board and the points earned.
+     * <p>
+     * Scoring follows the original 2048 rule: each merge awards the value of the
+     * <b>resulting</b> tile (two 2s merge into a 4 and award 4 points; two 1024s
+     * award 2048). A move that merges nothing awards 0.
+     * <p>
+     * As with {@link #move(Direction)}, no tile is generated here, and the board is
+     * not mutated: this method is deterministic and side-effect free.
+     *
+     * @param dir direction of the move
+     * @return the resulting board and the points earned by this move
+     */
+    public MoveResult moveScored(Direction dir) {
+        Collapsed collapsed = switch (dir) {
+            // Left: the base case, applied directly to each line.
+            case LEFT -> collapseRows(cells);
+
+            // Right: mirrors each line, collapses to the left, mirrors back.
+            case RIGHT -> {
+                Collapsed c = collapseRows(mirror(cells));
+                yield new Collapsed(mirror(c.grid()), c.points());
+            }
+
+            // Up: transpose (columns become rows), collapse to the left, transpose back.
+            case UP -> {
+                Collapsed c = collapseRows(transpose(cells));
+                yield new Collapsed(transpose(c.grid()), c.points());
+            }
+
+            // Down: transpose, then treat as "right" (mirror/collapse/mirror), transpose back.
+            case DOWN -> {
+                Collapsed c = collapseRows(mirror(transpose(cells)));
+                yield new Collapsed(transpose(mirror(c.grid())), c.points());
+            }
+        };
+        return new MoveResult(new Board(collapsed.grid()), collapsed.points());
+    }
+
+    /**
+     * Collapses every row of the given matrix toward the left, summing the points
+     * earned across all rows.
      * <p>
      * Each row is processed independently using {@link #mergeLeft(Integer[])},
      * which moves non-empty tiles to the left and merges adjacent tiles according
      * to the game rules.
      * <p>
      * This method does not modify the supplied matrix. It returns a new matrix
-     * containing the collapsed rows.
+     * containing the collapsed rows, plus the total points earned.
+     * <p>
+     * Mirroring and transposing never change <i>which</i> tiles merge — they only
+     * reorient the grid — so the points computed here are correct for all four
+     * directions.
      *
      * @param grid the matrix whose rows are to be collapsed
-     * @return a new matrix with every row collapsed toward the left
+     * @return the collapsed matrix and the points earned by its merges
      */
-    private static Integer[][] collapseRows(Integer[][] grid) {
+    private static Collapsed collapseRows(Integer[][] grid) {
         Integer[][] result = new Integer[SIZE][];
+        int points = 0;
         for(int i = 0; i < SIZE; i++) {
-            result[i] = mergeLeft(grid[i]);
+            MergedRow mergedRow = mergeLeft(grid[i]);
+            result[i] = mergedRow.row();
+            points += mergedRow.points();
         }
-        return result;
+        return new Collapsed(result, points);
     }
 
     /**
@@ -123,16 +166,26 @@ public final class Board {
      * </ol>
      * Example: {@code [null, 8, 2, 2]} → compress {@code [8,2,2]} →
      * merge {@code [8,4]} → complete {@code [8,4,null,null]}.
+     * <p>
+     * Each merge also awards points equal to the value of the resulting tile (the
+     * original 2048 rule). The points are returned alongside the row; nothing is
+     * accumulated in the board.
+     *
+     * @param row the row to merge to the left
+     * @return the merged row and the points earned by its merges
      */
-    private static Integer[] mergeLeft(Integer[] row){
+    private static MergedRow mergeLeft(Integer[] row){
         // Step 1: compress (only non-null values, in order).
         List<Integer> values = Arrays.stream(row).filter(Objects::nonNull).toList();
 
         //Step 2: Merge adjacent matching pairs, from left to right.
         List<Integer> merged = new ArrayList<>();
+        int points = 0;
         for(int i = 0; i < values.size(); i++) {
             if( i + 1 < values.size() && values.get(i).equals(values.get( i + 1)) ){
-                merged.add(values.get(i) * 2);
+                int mergedValue = values.get(i) * 2;
+                merged.add(mergedValue);
+                points += mergedValue; // the 2048 rule: you score the resulting tile
                 // skip the second element of the pair: it has already been consumed in the fusion.
                 i++;
             } else {
@@ -145,7 +198,7 @@ public final class Board {
         for(int i = 0; i < merged.size(); i++) {
             result[i] = merged.get(i);
         }
-        return result;
+        return new MergedRow(result, points);
     }
 
     /**
@@ -257,8 +310,8 @@ public final class Board {
      */
     public boolean hasWon(){
         return Arrays.stream(cells)
-                        .flatMap(Arrays::stream)
-                        .anyMatch(value -> value != null && value.equals(WINNING_TILE));
+                .flatMap(Arrays::stream)
+                .anyMatch(value -> value != null && value.equals(WINNING_TILE));
     }
 
     /**
@@ -322,25 +375,6 @@ public final class Board {
             copy[r] = Arrays.copyOf(cells[r], SIZE);
         }
         return copy;
-    }
-
-    /**
-     * Returns the sum of all tile values currently present on the board.
-     * <p>
-     * Empty cells ({@code null}) are ignored and contribute zero to the total.
-     *
-     * @return the sum of all non-null tile values
-     */
-    public int sumOfTiles() {
-        int sum = 0;
-        for (Integer[] row : this.cells) {
-            for (Integer value : row) {
-                if (value != null) {
-                    sum += value;
-                }
-            }
-        }
-        return sum;
     }
 
     /**
