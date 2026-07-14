@@ -62,6 +62,9 @@ com.pontalti.game2048
 ├── domain/                             core — framework-free, UNCHANGED
 │   ├── Board  Game  Direction  GameStatus  Position
 │   ├── InitialGameTileLimit            enum (MIN/MAX) parameterizing the initial tile count
+│   ├── MoveResult                      a move's outcome: the new board + the points it earned
+│   ├── Collapsed  MergedRow            internal carriers: a collapsed grid / row, plus its points
+│   ├── Snapshot                        board + score + status captured for undo
 │   └── port/
 │       ├── in/
 │       │   └── GamePort                input port: the game use cases (+ CreatedGame)
@@ -120,10 +123,17 @@ The service starts on `http://localhost:8080`.
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/games` | Create a new game (two starting tiles) |
-| GET | `/games/{id}` | Get the current board and status |
+| GET | `/games/{id}` | Get the current board, score and status |
 | POST | `/games/{id}/moves` | Play a move; body `{"direction":"LEFT"}` |
+| POST | `/games/{id}/undo` | Undo the last valid move (board, score and status) |
 | GET | `/games/{id}/hint` | AI-suggested move (does not change the game) |
 | DELETE | `/games/{id}` | Delete a game |
+
+Every game-returning endpoint answers with the same shape:
+
+```json
+{ "id": "3f2504e0-...", "board": [[2, null, null, 4], ...], "score": 148, "status": "PLAYING" }
+```
 
 - **Directions:** `LEFT`, `RIGHT`, `UP`, `DOWN`.
 - **Status:** `PLAYING`, `WON`, `LOST`.
@@ -139,28 +149,48 @@ With the app running:
 
 ## Web UI (browser client)
 
-A standalone React page plays the game in the browser by calling this API — it is
-just another inbound adapter, talking to the domain purely over HTTP. Keyboard
-controls: arrow keys or `W`/`A`/`S`/`D` to move, `H` for an AI hint.
+A ready-to-use test client lives in the **`webUI/`** folder at the root of the
+project:
 
-Because the UI is served from a different origin than the API, CORS must be open
-for it. `WebConfig` allows the common local origins (Vite `5173`, `3000`,
-`http.server` `8000`, Live Server `127.0.0.1:5500`); adjust the list to match
-wherever the UI is served.
-
-Quick way to run it locally:
-
-```bash
-# 1) start the API
-./mvnw spring-boot:run
-
-# 2) serve the UI from a folder containing the HTML, from an allowed origin
-python3 -m http.server 8000
-# then open http://localhost:8000 and point the client at http://localhost:8080
+```
+webUI/
+  index.html        the React client (single file, no build step)
+  start-server.sh   serves the page on http://localhost:8000
 ```
 
-Serve the page over HTTP (not opened as a `file://` path), so its origin matches
-the CORS allow-list.
+It is a standalone React page that plays the game in the browser by calling this
+API — just another inbound adapter, talking to the domain purely over HTTP. It
+knows nothing about the domain; it knows the HTTP contract.
+
+**Controls:** arrow keys or `W`/`A`/`S`/`D` to move, `H` for an AI hint, `U` to undo
+the last move. The same actions are available as buttons, and the running score is
+shown above the board.
+
+### Running it
+
+```bash
+# 1) start the API (from the project root)
+./mvnw spring-boot:run
+
+# 2) serve the UI (in another terminal)
+cd webUI
+./start-server.sh          # python3 -m http.server 8000
+```
+
+Then open `http://localhost:8000` and leave the client pointed at
+`http://localhost:8080`.
+
+If `start-server.sh` is not executable yet: `chmod +x webUI/start-server.sh`.
+
+**Serve the page over HTTP, not as a `file://` path** — the origin has to match the
+CORS allow-list. `WebConfig` allows the common local origins (`8000` for
+`http.server`, plus Vite `5173`, `3000`, and Live Server `127.0.0.1:5500`); adjust
+the list if you serve it from somewhere else. A failed request in the browser
+console with no response is almost always CORS, not a bug in the API.
+
+The page also has a **demo mode** (a toggle at the bottom): it plays entirely in the
+browser with no backend, mirroring the server's rules — handy for showing the UI when
+the API is not running.
 
 ## Example session (curl)
 
@@ -225,6 +255,44 @@ named source referenced by both the `Game` constructor and its test. With equal
 bounds every game starts with exactly two tiles (the classic 2048 opening, a stated
 reading of the statement's "a random number of 2s"); widening the range is a
 one-value change and the test adapts automatically, since it reads the enum's bounds.
+
+## Score and undo
+
+Both are domain concerns and the REST layer adds nothing to them: `GameServiceImpl`
+just calls `game.undo()` and reads `game.getScore()`, and the controller serialises
+whatever the domain reports. The exact same `Game` drives the desktop build.
+
+**Scoring** follows the original 2048 rule: each merge awards the value of the
+**resulting** tile (two 2s merge into a 4 and award 4 points). Sliding without
+merging, invalid moves and AI hints award nothing.
+
+`Board` *computes* the points a move earns (`moveScored` returns a `MoveResult` = new
+board + points) but never *accumulates* them — it stays immutable and stateless.
+Accumulation lives in `Game`, the only class that knows whether a move was actually
+played. That split is what keeps the AI honest: the advisor simulates thousands of
+hypothetical moves through `Board.move`, and none of them can inflate the real score.
+
+Note the score is **not derivable from the board**: it depends on the match history,
+because a `4` that spawned never scored while a `4` produced by a merge did.
+
+**Undo** (`POST /games/{id}/undo`) rolls back the last valid move. `Game` captures a
+`Snapshot` (board + score + status) *after* confirming the move actually changed the
+board, and `undo()` restores all three together:
+
+- restoring the **score** matters, or the player would keep the points of a move that
+  no longer happened;
+- restoring the **status** matters, or a finished game would stay frozen in
+  `WON`/`LOST` — it is exactly what lets a player undo the move that ended the game
+  and carry on.
+
+A move that changed nothing never creates an undo point, so it can never blank out a
+valid one. Undo is single level: each move can be rolled back once. Making it
+multi-level would mean holding a `Deque<Snapshot>` instead of a single field; nothing
+else would change.
+
+Undo is serialized with `synchronized (game)` for the same reason a move is: it
+mutates board, score and status, so it must not interleave with a concurrent move on
+the same game.
 
 ## Testing
 

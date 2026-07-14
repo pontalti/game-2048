@@ -73,6 +73,23 @@ public class GameServiceImpl implements GamePort {
         }
     }
 
+    /**
+     * Undoes the last valid move of the given game.
+     * <p>
+     * Serialized on the game instance for the same reason {@link #move} is: an undo
+     * mutates the game's board, score and status, so it must not interleave with a
+     * concurrent move on the same game. Different games lock on different instances
+     * and still run in parallel.
+     */
+    @Override
+    public Game undo(String id) {
+        Game game = get(id);
+        synchronized (game) {
+            game.undo();
+            return game;
+        }
+    }
+
     /** Deletes the game; throws {@link GameNotFoundException} if it did not exist. */
     @Override
     public void delete(String id) {

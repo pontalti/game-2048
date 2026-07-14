@@ -68,6 +68,15 @@ public class GameController {
         return new HintResponse(suggestion.map(Direction::name).orElse(null));
     }
 
+    @Operation(summary = "Undo the last move",
+            description = "Rolls the game back to the state before its last valid move, "
+                    + "restoring board, score and status. Does nothing if there is no move to undo.")
+    @PostMapping("/{id}/undo")
+    public GameResponse undo(@PathVariable String id) {
+        Game game = service.undo(id);
+        return GameResponse.from(id, game);
+    }
+
     @Operation(summary = "Delete a game", description = "Removes a game from the server.")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

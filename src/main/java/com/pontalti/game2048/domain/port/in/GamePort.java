@@ -53,6 +53,21 @@ public interface GamePort {
     Optional<Direction> hint(String id);
 
     /**
+     * Rolls a game back to the state before its last valid move, restoring board,
+     * score and status together.
+     * <p>
+     * A move that changed nothing never creates an undo point, and each undo point
+     * can be spent only once (single-level undo), so this may legitimately do
+     * nothing. The updated game is returned either way; callers can compare the
+     * state, and the domain remains the single source of truth about whether an
+     * undo was possible.
+     *
+     * @param id the game id
+     * @return the game after the attempted undo
+     */
+    Game undo(String id);
+
+    /**
      * Deletes a game.
      *
      * @param id the game id

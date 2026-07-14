@@ -204,6 +204,7 @@ function realApi(baseUrl) {
         body: JSON.stringify({ direction }),
       }).then(j),
     hint: (id) => fetch(`${base}/games/${id}/hint`).then(j),
+    undo: (id) => fetch(`${base}/games/${id}/undo`, { method: "POST" }).then(j),
     remove: (id) => fetch(`${base}/games/${id}`, { method: "DELETE" }).then(j),
   };
 }
@@ -277,7 +278,8 @@ function demoApi() {
       const id = "demo-" + Math.random().toString(36).slice(2,10);
       const g = Array.from({length:SIZE},()=>Array(SIZE).fill(null));
       spawn(g); spawn(g);
-      store[id] = { board: g, score: 0, status: evaluate(g) };
+      // `undoPoint` mirrors the domain's Snapshot: board + score + status together.
+      store[id] = { board: g, score: 0, status: evaluate(g), undoPoint: null };
       return delay(resp(id));
     },
     get: (id) => delay(resp(id)),
@@ -286,10 +288,23 @@ function demoApi() {
       if (s.status !== "PLAYING") return delay(resp(id));
       const [moved, pts] = move(s.board, direction);
       if (!eq(moved, s.board)) {
+        // Snapshot AFTER confirming the move is valid: a move that changes nothing
+        // must never overwrite the undo point (same rule as Game.play).
+        s.undoPoint = { board: s.board, score: s.score, status: s.status };
         s.score += pts;          // points only on a valid move — same rule as the domain
         spawn(moved);
         s.board = moved;
         s.status = evaluate(moved);
+      }
+      return delay(resp(id));
+    },
+    undo: (id) => {
+      const s = store[id];
+      if (s.undoPoint) {
+        s.board = s.undoPoint.board;   // board, score and status restored together
+        s.score = s.undoPoint.score;
+        s.status = s.undoPoint.status;
+        s.undoPoint = null;            // single-level undo
       }
       return delay(resp(id));
     },
@@ -371,6 +386,18 @@ function App() {
     } finally { setBusy(false); }
   }, [game, busy]);
 
+  const doUndo = useCallback(async () => {
+    if (!game || busy) return;
+    setHint(null); setBusy(true);
+    try {
+      // The server owns the undo rule; the client just asks and re-renders.
+      const next = await apiRef.current.undo(game.id);
+      setGame(next);
+    } catch (e) {
+      setError("Undo failed. Is the API reachable?");
+    } finally { setBusy(false); }
+  }, [game, busy]);
+
   const askHint = useCallback(async () => {
     if (!game || game.status !== "PLAYING") return;
     try {
@@ -382,12 +409,13 @@ function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "h" || e.key === "H") { e.preventDefault(); askHint(); return; }
+      if (e.key === "u" || e.key === "U") { e.preventDefault(); doUndo(); return; }
       const dir = KEY_TO_DIR[e.key];
       if (dir) { e.preventDefault(); doMove(dir); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [doMove, askHint]);
+  }, [doMove, askHint, doUndo]);
 
   const status = game?.status ?? "PLAYING";
   const score = game?.score ?? 0;
@@ -422,6 +450,8 @@ function App() {
               <p>{status === "WON" ? "You reached 2048." : "No moves left."}</p>
               <div className="final">Final score: <b>{score}</b></div>
               <button className="primary" onClick={start}>New game</button>
+              {/* Undo restores the status too, so it can revive a finished game. */}
+              <button onClick={doUndo} style={{marginLeft:8}}>Undo (U)</button>
             </div>
           </div>
         )}
@@ -430,6 +460,7 @@ function App() {
       <div className="controls">
         <button className="primary" onClick={start} disabled={busy}>New game</button>
         <button onClick={askHint} disabled={busy || status !== "PLAYING"}>Hint (H)</button>
+        <button onClick={doUndo} disabled={busy}>Undo (U)</button>
       </div>
 
       {error && <div className="banner">{error}</div>}
@@ -437,6 +468,7 @@ function App() {
       <div className="help">
         Move with <kbd>&larr;</kbd> <kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>&rarr;</kbd>
         or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>. Ask the AI with <kbd>H</kbd>.
+        Undo the last move with <kbd>U</kbd>.
       </div>
 
       <div className="config">
