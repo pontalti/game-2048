@@ -105,10 +105,14 @@ public class FxUI extends Application {
         hintButton.setFocusTraversable(false);
         hintButton.setOnAction(event -> showHint());
 
-        HBox actions = new HBox(10, newGameButton, hintButton);
+        Button undoButton = new Button("Undo (U)");
+        undoButton.setFocusTraversable(false);
+        undoButton.setOnAction(event -> undo());
+
+        HBox actions = new HBox(10, newGameButton, hintButton, undoButton);
         actions.setAlignment(Pos.CENTER);
 
-        Label help = new Label("Arrows or WASD to move  ·  H for a hint  ·  N for a new game");
+        Label help = new Label("Arrows or WASD to move  ·  H for a hint  ·  U to undo  ·  N for a new game");
 
         // The VBox is aligned to CENTER, so every child — including the score — is
         // horizontally centered without any extra configuration.
@@ -148,6 +152,12 @@ public class FxUI extends Application {
 
         if (event.getCode() == KeyCode.N) {
             newGame();
+            event.consume();
+            return;
+        }
+
+        if (event.getCode() == KeyCode.U) {
+            undo();
             event.consume();
             return;
         }
@@ -202,6 +212,28 @@ public class FxUI extends Application {
 
         game.play(direction);
         render();
+    }
+
+    /**
+     * Rolls the game back to the state before the last valid move and refreshes the
+     * interface.
+     * <p>
+     * The domain decides whether an undo is possible: {@link Game#undo()} restores
+     * the board, the score and the status together, and reports whether it did
+     * anything. This adapter only reflects that outcome, so the button and the
+     * {@code U} key behave identically — both call this one method.
+     * <p>
+     * The message is written <b>after</b> {@link #render()}, because render clears
+     * the status line whenever the game is {@code PLAYING}; setting it first would
+     * wipe the message immediately.
+     * <p>
+     * A move that changed nothing never creates an undo point, so it can never be
+     * undone — there is nothing to roll back to.
+     */
+    private void undo() {
+        boolean undone = game.undo();
+        render();
+        statusLabel.setText(undone ? "Move undone" : "Nothing to undo");
     }
 
     /**

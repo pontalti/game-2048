@@ -8,6 +8,7 @@ import com.pontalti.game2048.domain.port.out.MoveAdvisor;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Scanner;
 
 /**
@@ -29,19 +30,25 @@ import java.util.Scanner;
  * <b>Presentation lives here:</b> rendering the grid and the score is the UI's job,
  * not the {@code Board}'s. ({@code Board.toString} remains only a debug aid.)
  * <p>
- * <b>Injected dependencies:</b> {@link Game}, {@link MoveAdvisor} and
- * {@link Scanner} are all passed in, so tests can drive the loop with scripted
- * input and {@code Main} owns the wiring and the lifecycle of {@code System.in}.
+ * <b>Injected dependencies:</b> {@link Game}, {@link MoveAdvisor}, {@link Random}
+ * and {@link Scanner} are all passed in, so tests can drive the loop with scripted
+ * input and a fixed seed, and {@code Main} owns the wiring and the lifecycle of
+ * {@code System.in}. The {@code Random} is what lets this adapter start a new match
+ * ({@code N}) without reaching outside for a source of randomness.
  */
 public final class ConsoleUI {
 
-    private final Game game;
+    /** Not final: the {@code N} command replaces it with a fresh match. */
+    private Game game;
+
     private final MoveAdvisor advisor;
+    private final Random random;
     private final Scanner scanner;
 
-    public ConsoleUI(Game game, MoveAdvisor advisor, Scanner scanner){
+    public ConsoleUI(Game game, MoveAdvisor advisor, Random random, Scanner scanner){
         this.game = Objects.requireNonNull(game, "game cannot be null");
         this.advisor = Objects.requireNonNull(advisor, "advisor cannot be null");
+        this.random = Objects.requireNonNull(random, "random cannot be null");
         this.scanner = Objects.requireNonNull(scanner, "scanner cannot be null");
     }
 
@@ -64,8 +71,20 @@ public final class ConsoleUI {
     public void run(){
         printInstructions();
 
-        while(this.game.getStatus() == GameStatus.PLAYING){
+        while (true) {
             render(this.game.getBoard(), this.game.getScore());
+
+            /*
+                The match may be over — but the loop does NOT exit here. Undo and
+                "new game" are exactly the commands a player wants at this moment,
+                so the terminal state only changes which commands are accepted, not
+                whether we keep listening.
+            */
+            boolean over = this.game.getStatus() != GameStatus.PLAYING;
+            if (over) {
+                printResult(this.game.getStatus(), this.game.getScore());
+                System.out.println("N = new game   U = undo the last move   Q = quit");
+            }
 
             /*
                 EOF (Ctrl+D or a piped input that ran out): exit gracefully
@@ -82,17 +101,41 @@ public final class ConsoleUI {
                 return;
             }
 
+            //New game: replaces the current match with a fresh one.
+            if (input.equals("n")) {
+                newGame();
+                continue;
+            }
+
+            //Undo command: roll back the last valid move (board, score and status).
+            //It works after a loss too — restoring the status is what revives the game.
+            if (input.equals("u")) {
+                printUndo();
+                continue;
+            }
+
             //Hint command: consult the AI advisor without consuming a turn.
             if (input.equals("h")) {
-                printHint();
+                if (over) {
+                    System.out.println("The game is over — no hints. Use N, U or Q.");
+                } else {
+                    printHint();
+                }
                 continue;
             }
 
             Direction dir = toDirection(input);
             if(dir == null){
-                System.out.println("Invalid key. Use W/A/S/D to move, H for a hint, or Q to quit.");
+                System.out.println("Invalid key. Use W/A/S/D to move, H for a hint, "
+                        + "U to undo, N for a new game, or Q to quit.");
                 continue;
             }
+
+            if (over) {
+                System.out.println("The game is over — N for a new game, U to undo, Q to quit.");
+                continue;
+            }
+
             /*
                 Capture the board reference before playing so we can tell whether
                 the move actually changed anything (Board is immutable, so a valid
@@ -104,10 +147,36 @@ public final class ConsoleUI {
                 System.out.println("That move changes nothing — try another direction.");
             }
         }
+    }
 
-        // Loop exited because the game ended: show the final board, score and outcome.
-        render(this.game.getBoard(), this.game.getScore());
-        printResult(this.game.getStatus(), this.game.getScore());
+    /**
+     * Starts a fresh match, discarding the current one.
+     * <p>
+     * The adapter builds a new {@link Game} from the injected {@link Random}; the
+     * board, the score and the undo history all reset with it, because they all live
+     * inside {@code Game}. No game rule is duplicated here.
+     */
+    private void newGame() {
+        this.game = new Game(this.random);
+        System.out.println("New game started.");
+    }
+
+    /**
+     * Undoes the last valid move and reports the outcome to the player.
+     * <p>
+     * The domain owns the decision: {@link Game#undo()} restores the board, the
+     * score and the status together, and reports whether there was anything to roll
+     * back. This adapter only prints the result.
+     * <p>
+     * A move that changed nothing never creates an undo point, so it can never be
+     * undone. Undo is single level: each move can be rolled back once.
+     */
+    private void printUndo() {
+        if (this.game.undo()) {
+            System.out.println("Move undone.");
+        } else {
+            System.out.println("Nothing to undo.");
+        }
     }
 
     /**
@@ -217,7 +286,7 @@ public final class ConsoleUI {
     private static void printInstructions(){
         System.out.println("=== 2048 ===");
         System.out.println("Move: W=up  A=left  S=down  D=right  (press Enter after each key)");
-        System.out.println("H=hint (ask the AI)   Q=quit.   Reach 2048 to win!");
+        System.out.println("H=hint (ask the AI)   U=undo   N=new game   Q=quit.   Reach 2048 to win!");
     }
 
     /**

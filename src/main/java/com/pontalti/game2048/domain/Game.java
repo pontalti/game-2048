@@ -31,6 +31,7 @@ import java.util.Random;
  */
 public final class Game {
 
+
     private final Random random;
     private Board board;
     private GameStatus status;
@@ -42,6 +43,17 @@ public final class Game {
      * both break immutability and let simulated moves inflate the real score.
      */
     private int score;
+
+    /**
+     * The state captured immediately before the last <b>valid</b> move — the point
+     * an {@link #undo()} rolls back to. {@code null} when there is nothing to undo.
+     * <p>
+     * It holds the board, the score <i>and</i> the status together, because undoing
+     * a move must restore all three: rolling back only the board would leave the
+     * player holding the points of a move that no longer happened, and would leave a
+     * finished game frozen in {@code WON}/{@code LOST}.
+     */
+    private Snapshot undoPoint;
 
     /**
      * Creates a game with the initial board already set up: the configured number
@@ -125,14 +137,20 @@ public final class Game {
 
         /*
         Invalid move: the move didn't change anything. It doesn't generate a tile,
-        it doesn't score, it doesn't change the status.
+        it doesn't score, it doesn't change the status — and, crucially, it does NOT
+        touch the undo point. Capturing the snapshot before this check would let a
+        move that changed nothing overwrite the undo point with the current state,
+        silently turning the next undo into a no-op.
         */
         if (moved.sameGridAs(this.board)){
             return this.status;
         }
+
         /*
-        Valid move: score the merges, generate a new 2/4, and update the state.
+        Valid move: capture the state we are about to leave behind, then score the
+        merges, generate a new 2/4, and update the state.
         */
+        this.undoPoint = new Snapshot(this.board, this.score, this.status);
         addScore(result.points());
         this.board = moved.spawnRandom(this.random);
         this.status = evaluate(this.board);
@@ -210,6 +228,46 @@ public final class Game {
      */
     public int getScore() {
         return this.score;
+    }
+
+    /**
+     * Whether there is a move available to undo.
+     * <p>
+     * True only after a <b>valid</b> move that has not been undone yet. A move that
+     * changed nothing never creates an undo point, and each undo point can be spent
+     * only once (this is a single-level undo).
+     *
+     * @return {@code true} if {@link #undo()} would restore a previous state
+     */
+    public boolean canUndo() {
+        return this.undoPoint != null;
+    }
+
+    /**
+     * Rolls the game back to the state it was in before the last valid move,
+     * restoring the board, the score <i>and</i> the status together.
+     * <p>
+     * Restoring the status matters: it is what lets a player undo the move that
+     * ended the game and keep playing, since {@link #play(Direction)} refuses to act
+     * once the status is no longer {@code PLAYING}. Restoring the score matters
+     * because otherwise the points of a move that no longer happened would linger.
+     * <p>
+     * The undo point is consumed, so a second consecutive call does nothing (single
+     * level undo). Doing nothing when there is nothing to undo is deliberate: it
+     * keeps the operation safe to wire straight to a button or a key.
+     *
+     * @return {@code true} if a previous state was restored; {@code false} if there
+     *         was nothing to undo
+     */
+    public boolean undo() {
+        if (this.undoPoint == null) {
+            return false;
+        }
+        this.board = this.undoPoint.board();
+        this.score = this.undoPoint.score();
+        this.status = this.undoPoint.status();
+        this.undoPoint = null; // an undo point can only be spent once
+        return true;
     }
 
 }

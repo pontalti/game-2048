@@ -105,12 +105,17 @@ public final class SwingUI {
         newGameButton.setFocusable(false); // don't let it capture the arrow keys
         newGameButton.addActionListener(e -> newGame());
 
+        JButton undoButton = new JButton("Undo (U)");
+        undoButton.setFocusable(false);
+        undoButton.addActionListener(e -> undo());
+
         // Two buttons side by side, centered as a row.
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
         buttons.add(hintButton);
         buttons.add(newGameButton);
+        buttons.add(undoButton);
 
-        JLabel help = new JLabel("Arrows or WASD to move  ·  H for a hint  ·  N for new game",
+        JLabel help = new JLabel("Arrows or WASD to move  ·  H for a hint  ·  U to undo  ·  N for new game",
                 SwingConstants.CENTER);
         statusLabel.setHorizontalAlignment(SwingConstants.CENTER);
 
@@ -183,6 +188,9 @@ public final class SwingUI {
 
         in.put(KeyStroke.getKeyStroke("N"), "newGame");
         act.put("newGame", action(e -> newGame()));
+
+        in.put(KeyStroke.getKeyStroke("U"), "undo");
+        act.put("undo", action(e -> undo()));
     }
 
     /**
@@ -231,6 +239,26 @@ public final class SwingUI {
             game.play(dir);
             render();
         }
+    }
+
+    /**
+     * Restores the previous board state and updates the Swing interface.
+     * <p>
+     * The domain decides whether an undo is possible: {@link Game#undo()} restores
+     * the board, the score and the status together and reports whether it did
+     * anything. This adapter only reflects that outcome on screen, so the button and
+     * the {@code U} key behave identically — both call this one method.
+     * <p>
+     * Note that a move which changed nothing never creates an undo point, so it can
+     * never be "undone" — there is nothing to roll back to.
+     */
+    private void undo() {
+        if (game.undo()) {
+            statusLabel.setText("Move undone");
+        } else {
+            statusLabel.setText("Nothing to undo");
+        }
+        render();
     }
 
     /**

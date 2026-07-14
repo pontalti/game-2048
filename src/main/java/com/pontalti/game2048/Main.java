@@ -51,10 +51,14 @@ public class Main {
      * remain inside the domain classes and are not implemented here.
      */
     private static void runConsole() {
-        Game game = new Game(new Random());
+        Random random = new Random();
+        Game game = new Game(random);
         MoveAdvisor advisor = new ExpectimaxAdvisor();
         try (Scanner scanner = new Scanner(System.in)) {
-            new ConsoleUI(game, advisor, scanner).run();
+            // The same Random is handed to the adapter so that the "new game"
+            // command can build a fresh match without creating its own source of
+            // randomness — mirroring how SwingUI is wired.
+            new ConsoleUI(game, advisor, random, scanner).run();
         }
     }
 

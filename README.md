@@ -22,6 +22,14 @@ AI, and each interface is just an adapter plugged into the same core.
 | 6 | Win / Lose detection | `Board.hasWon` / `Board.isGameOver` |
 | 6 | AI move suggestion | `ExpectimaxAdvisor` (behind the `MoveAdvisor` output port) |
 
+**Beyond the statement.** Score and undo are not required. They are included because
+they exercise the architecture rather than decorate the game: the score demonstrates
+that `Board` can compute a value without accumulating state (so the AI's simulations
+never touch the real score), and undo demonstrates that a match's state is captured
+in one place (`Snapshot`) rather than scattered across the UIs. Every adapter picks
+them up for free -- none of the four front-ends contains a line of scoring or undo
+logic.
+
 ---
 
 ## Prerequisites
@@ -98,10 +106,12 @@ mvn javafx:run -P <profile>
 
 ### Controls
 
-| Interface | Move | Hint | New game | Quit |
-|-----------|------|------|----------|------|
-| Swing / JavaFX | Arrow keys or W/A/S/D | `H` | `N` | close window |
-| Console | W/A/S/D + Enter | `H` | -- | `Q` |
+| Interface | Move | Hint | Undo | New game | Quit |
+|-----------|------|------|------|----------|------|
+| Swing / JavaFX | Arrow keys or W/A/S/D | `H` (or button) | `U` (or button) | `N` (or button) | close window |
+| Console | W/A/S/D + Enter | `H` | `U` | -- | `Q` |
+
+The score is shown in every interface and updates after each move.
 
 ---
 
@@ -218,14 +228,56 @@ the parallel search stays deterministic.
 
 ---
 
+## Score and undo
+
+Both are domain concerns, kept out of the adapters: every UI simply reads
+`game.getScore()` and calls `game.undo()`, and none of them knows how either works.
+
+**Scoring** follows the original 2048 rule: each merge awards the value of the
+**resulting** tile (two 2s merge into a 4 and award 4 points; two 1024s award 2048).
+Sliding without merging, and invalid moves, award nothing.
+
+The board *computes* the points a move earns (`Board.moveScored` returns a
+`MoveResult` = new board + points) but never *accumulates* them: it stays immutable
+and stateless. Accumulation lives in `Game`, which is the only class that knows
+whether a move was actually played. That split is what keeps the AI honest -- the
+advisor simulates thousands of hypothetical moves through `Board.move`, and none of
+them can inflate the player's real score.
+
+Note that the score is **not derivable from the board**: it depends on the history of
+the match, because a `4` that spawned never scored while a `4` produced by a merge
+did. It has to be accumulated as you play.
+
+**Undo** rolls back the last valid move. `Game` captures a `Snapshot` (board + score
++ status) *after* it has confirmed the move actually changed the board, and `undo()`
+restores all three together:
+
+- restoring the **score** matters, or the player would keep the points of a move that
+  no longer happened;
+- restoring the **status** matters, or a finished game would stay frozen in
+  `WON`/`LOST` -- it is precisely what lets a player undo the move that ended the
+  game and carry on.
+
+A move that changed nothing never creates an undo point, so it can never blank out a
+valid one. Undo is single level: each move can be rolled back once (`canUndo()`
+reports whether there is anything to roll back). Making it multi-level would mean
+holding a `Deque<Snapshot>` instead of a single field; nothing else would change.
+
+In the console the game loop exits as soon as the game ends, so undo there cannot
+rescue a lost game -- the Swing and JavaFX adapters can, since they stay event-driven
+after the match is over.
+
 ## Architecture
 
 ```
 domain/                  pure game rules -- no I/O, no UI, no framework
   Board                  immutable 4x4 board; the four moves derive from "move left"
   Direction, Position    value objects
-  Game, GameStatus       orchestrates a match (move -> spawn -> evaluate)
+  Game, GameStatus       orchestrates a match (move -> score -> spawn -> evaluate)
   InitialGameTileLimit   enum (MIN/MAX) parameterizing the initial tile count
+  MoveResult             a move's outcome: the new board + the points it earned
+  Collapsed, MergedRow   internal carriers: a collapsed grid / row, plus its points
+  Snapshot               board + score + status captured for undo
   port/out/MoveAdvisor   output port: "suggest a move" without knowing how
 
 adapter/
@@ -282,6 +334,10 @@ here:
 - The AI advisor searches to a **default depth of 3 player moves**, which plays
   strongly while remaining fast; the depth is configurable via the
   `ExpectimaxAdvisor(int)` constructor.
+- **Scoring** follows the original 2048 rule: a merge awards the value of the tile it
+  produces. Spawns, slides without a merge, invalid moves and AI hints award nothing.
+- **Undo is single level**: only the last valid move can be rolled back, and only
+  once. It restores board, score and status together.
 
 ---
 
