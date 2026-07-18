@@ -1,4 +1,4 @@
-# 🎮 2048
+# 🎮 2048 - LGT Private Bank - Assessment
 
 2048 - code challenge.
 
