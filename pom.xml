@@ -17,7 +17,7 @@
     </parent>
 
     <properties>
-        <maven.compiler.release>25</maven.compiler.release>
+        <maven.compiler.release>27</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <start-class>com.pontalti.game2048.Game2048Application</start-class>
         <!--openapi-->
